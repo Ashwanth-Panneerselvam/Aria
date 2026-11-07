@@ -1,0 +1,53 @@
+
+name: Build Aria for iPhone
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    name: Build unsigned iPhone app
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout Aria source
+        uses: actions/checkout@v4
+
+      - name: Check Xcode version
+        run: |
+          xcodebuild -version
+
+      - name: Build Aria
+        run: |
+          xcodebuild \
+            -project "Aria.xcodeproj" \
+            -scheme "Aria - Music Browser" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/AriaBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Create unsigned IPA
+        run: |
+          APP="$RUNNER_TEMP/AriaBuild/Build/Products/Release-iphoneos/Aria - Music Browser.app"
+
+          if [ ! -d "$APP" ]; then
+            echo "App bundle not found."
+            exit 1
+          fi
+
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry Aria.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aria-iPhone-IPA
+          path: Aria.ipa
+          retention-days: 7
