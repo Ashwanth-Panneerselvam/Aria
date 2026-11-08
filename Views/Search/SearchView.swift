@@ -79,6 +79,7 @@ struct SearchView: View {
                         .frame(maxHeight: .infinity)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Search")
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
                         prompt: scope == .library

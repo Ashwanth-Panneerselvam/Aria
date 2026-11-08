@@ -90,7 +90,15 @@ struct ContentView: View {
                 .padding(.vertical, DS.Spacing.md)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.black.opacity(0.85))
+                        .fill(themeManager.isOLED
+                              ? themeManager.tokens.elevatedSurface
+                              : Color.black.opacity(0.85))
+                )
+                .overlay(
+                    // On pure black the banner needs an edge to read as a
+                    // floating element; elsewhere the dark fill already does.
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(themeManager.tokens.chromeBorder, lineWidth: 0.5)
                 )
                 .padding(.horizontal, DS.Spacing.lg)
                 .padding(.top, DS.Spacing.sm)
@@ -116,7 +124,10 @@ struct ContentView: View {
             bannerDismiss?.cancel()
             bannerDismiss = Task { await dismissBanner() }
         }
-        .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
+        // True Black is a dark scheme for every system-owned surface (file
+        // pickers, alerts, keyboards, share sheets) — those follow iOS's own
+        // dark style rather than a custom imitation.
+        .preferredColorScheme(themeManager.colorScheme)
         .onChange(of: settingsManager.defaultStartTab) { newValue in
             switch newValue {
             case .playlists: selectedTab = .playlists
@@ -230,7 +241,14 @@ struct ContentView: View {
         }
         .padding(.horizontal, DS.Spacing.xs)
         .padding(.vertical, 6)
-        .background(themeManager.surface)
+        .background(themeManager.tokens.chromeBackground)
+        .overlay(alignment: .top) {
+            // OLED: a hairline replaces the grey bar as the separator.
+            Rectangle()
+                .fill(themeManager.tokens.chromeBorder)
+                .frame(height: 0.5)
+                .accessibilityHidden(true)
+        }
     }
 
     private var allowedFillIcons: Set<String> { ["heart"] }

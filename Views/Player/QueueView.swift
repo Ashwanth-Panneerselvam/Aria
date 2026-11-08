@@ -28,6 +28,7 @@ struct QueueView: View {
                     }
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Up Next")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

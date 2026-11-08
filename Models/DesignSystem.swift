@@ -69,3 +69,29 @@ extension View {
         shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 2)
     }
 }
+
+/// Navigation-bar treatment per appearance. In True Black the bar is an
+/// opaque pure-black strip (no grey blur sliding in on scroll); Light and Dark
+/// keep the system's standard bar material and auto-hide behaviour exactly as
+/// before. Apply next to `.navigationTitle` on each screen.
+private struct AriaNavigationBarStyle: ViewModifier {
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    func body(content: Content) -> some View {
+        content
+            .toolbarBackground(
+                themeManager.isOLED
+                    ? AnyShapeStyle(DesignTokens.OLED.background)
+                    : AnyShapeStyle(Material.bar),
+                for: .navigationBar
+            )
+            .toolbarBackground(themeManager.isOLED ? .visible : .automatic,
+                               for: .navigationBar)
+    }
+}
+
+extension View {
+    func ariaNavigationBar() -> some View {
+        modifier(AriaNavigationBarStyle())
+    }
+}

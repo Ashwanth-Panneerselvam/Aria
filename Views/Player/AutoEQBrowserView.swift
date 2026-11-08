@@ -33,6 +33,7 @@ struct AutoEQBrowserView: View {
                 tokens.background.ignoresSafeArea()
                 content
             }
+            .ariaNavigationBar()
             .navigationTitle("AutoEQ Profiles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

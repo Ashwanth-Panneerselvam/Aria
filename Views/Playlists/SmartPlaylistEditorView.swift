@@ -42,6 +42,7 @@ struct SmartPlaylistEditorView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
+            .ariaNavigationBar()
             .navigationTitle(smartPlaylistsManager.playlists.contains { $0.id == working.id }
                              ? "Edit Smart Playlist" : "New Smart Playlist")
             .navigationBarTitleDisplayMode(.inline)

@@ -36,6 +36,7 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle(currentPlaylist.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

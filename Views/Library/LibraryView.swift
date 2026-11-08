@@ -67,6 +67,7 @@ struct LibraryView: View {
                     }
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $vm.searchText, prompt: "Search library")
@@ -233,10 +234,16 @@ struct LibraryView: View {
                                         .foregroundColor(tokens.accent)
                                 }
                             }
+                            // OLED: near-black rows on a black sheet instead
+                            // of the system's grey grouped style.
+                            .listRowBackground(tokens.isOLED ? tokens.surface : nil)
                         }
                     }
+                    .scrollContentBackground(tokens.isOLED ? .hidden : .automatic)
+                    .background(tokens.isOLED ? tokens.background : Color.clear)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Add to Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -531,7 +538,10 @@ struct LibraryView: View {
         }
         .padding(.horizontal, DS.Spacing.lg)
         .padding(.vertical, DS.Spacing.sm)
-        .background(Capsule().fill(.ultraThinMaterial))
+        .background(Capsule().fill(tokens.isOLED
+                                   ? AnyShapeStyle(tokens.elevatedSurface)
+                                   : AnyShapeStyle(Material.ultraThinMaterial)))
+        .overlay(Capsule().stroke(tokens.chromeBorder, lineWidth: 0.5))
         .softShadow()
     }
 

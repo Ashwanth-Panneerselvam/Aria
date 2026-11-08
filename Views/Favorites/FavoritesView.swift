@@ -260,6 +260,7 @@ struct FavoritesView: View {
                     .scrollContentBackground(.hidden)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Add to Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

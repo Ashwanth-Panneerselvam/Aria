@@ -35,6 +35,7 @@ struct SmartPlaylistDetailView: View {
                         .foregroundColor(tokens.textSecondary)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle(playlist?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

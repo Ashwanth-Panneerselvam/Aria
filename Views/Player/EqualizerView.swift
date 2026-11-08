@@ -49,6 +49,7 @@ struct EqualizerView: View {
                     }
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Equalizer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

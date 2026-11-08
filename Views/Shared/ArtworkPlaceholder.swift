@@ -26,10 +26,12 @@ struct ArtworkPlaceholder: View {
             let side = min(proxy.size.width, proxy.size.height)
             ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(tokens.dividerColor)
+                    // OLED: a near-black tile with a dim glyph, so a missing
+                    // cover doesn't become the brightest thing on screen.
+                    .fill(tokens.isOLED ? tokens.elevatedSurface : tokens.dividerColor)
                 Image(systemName: "music.note")
                     .font(.system(size: max(10, side * glyphScale), weight: .medium))
-                    .foregroundColor(tokens.textSecondary)
+                    .foregroundColor(tokens.isOLED ? tokens.textDisabled : tokens.textSecondary)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }

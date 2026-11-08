@@ -3,6 +3,7 @@ import SwiftUI
 struct AddToQueueModifier: ViewModifier {
     @ObservedObject var playerManager: PlayerManager
     let track: Track
+    @EnvironmentObject private var themeManager: ThemeManager
 
     @State private var showConfirmation = false
     @State private var confirmationText = "Added to Queue"
@@ -60,11 +61,16 @@ struct AddToQueueModifier: ViewModifier {
         .padding(.vertical, DS.Spacing.sm)
         .background(
             Capsule()
-                .fill(.ultraThinMaterial)
+                // OLED: a solid elevated surface instead of a translucent blur.
+                .fill(themeManager.isOLED
+                      ? AnyShapeStyle(themeManager.tokens.elevatedSurface)
+                      : AnyShapeStyle(Material.ultraThinMaterial))
         )
         .overlay(
             Capsule()
-                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                .stroke(themeManager.isOLED
+                        ? themeManager.tokens.hairline
+                        : Color.white.opacity(0.10), lineWidth: 0.5)
         )
         .softShadow()
     }

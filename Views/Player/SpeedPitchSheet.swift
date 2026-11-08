@@ -23,6 +23,7 @@ struct SpeedPitchSheet: View {
                     .padding(DS.Spacing.lg)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Speed & Pitch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
