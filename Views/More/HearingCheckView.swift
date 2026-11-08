@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Drives the hearing check: for each test frequency a pulsed tone starts
