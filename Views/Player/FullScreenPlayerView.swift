@@ -1,110 +1,64 @@
 import SwiftUI
 
+/// Now Playing — the DAP screen.
+///
+/// Layout (top → bottom): header, square artwork sized to the screen, title and
+/// artist — album, slim scrubber, transport, secondary actions, and an
+/// optional audio-facts strip. Everything is sized from the available space so
+/// it fits a 375 × 812 iPhone XS without clipping, and switches to a scrolling
+/// column at large Dynamic Type sizes.
+///
+/// Performance: this view does NOT observe `PlaybackClock`. Only
+/// `PlayerScrubber` does, so the 4 Hz position tick never re-renders artwork or
+/// controls. No animations run while idle.
 struct FullScreenPlayerView: View {
     @EnvironmentObject private var playerManager: PlayerManager
-    @EnvironmentObject private var clock: PlaybackClock
     @EnvironmentObject private var favoritesManager: FavoritesManager
     @EnvironmentObject private var playlistsManager: PlaylistsManager
     @EnvironmentObject private var recentlyPlayedManager: RecentlyPlayedManager
     @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var settingsManager: SettingsManager
+    @EnvironmentObject private var eqController: EQController
     @EnvironmentObject private var nav: NavigationCoordinator
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var onDismiss: () -> Void
 
     @State private var dragOffset: CGFloat = 0
 
     private let dragThreshold: CGFloat = 120
+    private let sidePadding: CGFloat = DS.Spacing.xl
+    private let artworkRadius: CGFloat = DS.Radius.sm
+
+    private var tokens: DesignTokens { themeManager.tokens }
+
+    /// Above this size the fixed column can't fit, so it scrolls instead.
+    private var usesScrollingLayout: Bool { dynamicTypeSize >= .xxLarge }
 
     var body: some View {
-        ZStack {
-            themeManager.background
-                .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                HStack {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.title3)
-                            .foregroundColor(themeManager.textPrimary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Close player")
-
-                    Spacer()
-
-                    Button {
-                        nav.presentedSheet = .queue
-                    } label: {
-                        Image(systemName: "list.bullet")
-                            .font(.title3)
-                            .foregroundColor(playerManager.queue.isEmpty
-                                             ? themeManager.textSecondary
-                                             : themeManager.textPrimary)
-                            .frame(width: 44, height: 44)
-                            // A real count badge: anchored to the frame's top-
-                            // trailing corner and inset, so multi-digit counts
-                            // grow leftward and stay inside the 44pt tap target
-                            // instead of spilling into the neighbouring control.
-                            .overlay(alignment: .topTrailing) {
-                                if !playerManager.queue.isEmpty {
-                                    Text(playerManager.queue.count > 99 ? "99+" : "\(playerManager.queue.count)")
-                                        .scaledFont(size: 9, weight: .bold, relativeTo: .caption2)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 4)
-                                        .frame(minWidth: 16, minHeight: 16)
-                                        .background(Capsule().fill(themeManager.theme.accentColor))
-                                        .padding([.top, .trailing], 2)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel(playerManager.queue.isEmpty ? "Show queue" : "Show queue, \(playerManager.queue.count) up next")
-                }
-                .padding(.top, DS.Spacing.sm)
-                .padding(.bottom, 20)
+        GeometryReader { geo in
+            ZStack {
+                tokens.background
+                    .ignoresSafeArea()
 
                 if let track = playerManager.currentTrack {
-                    artworkSection(track: track)
-                    trackInfoSection(track: track)
-                    seekBarSection
-                    transportControls
-                    secondaryControls(track: track)
-                    if playerManager.playbackState == .loading {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(themeManager.theme.accentColor)
-                            .padding(.top, 8)
+                    if usesScrollingLayout {
+                        ScrollView(showsIndicators: false) {
+                            playerColumn(track: track, size: geo.size)
+                        }
+                    } else {
+                        playerColumn(track: track, size: geo.size)
+                            .frame(maxHeight: .infinity)
                     }
                 } else {
-                    Spacer()
-                    Text("No track playing")
-                        .foregroundColor(themeManager.textSecondary)
+                    emptyState
                 }
-
-                Spacer()
             }
-            .padding(.horizontal, DS.Spacing.xl)
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .offset(y: dragOffset)
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    if value.translation.height > 0 {
-                        dragOffset = value.translation.height
-                    }
-                }
-                .onEnded { value in
-                    if value.translation.height > dragThreshold {
-                        onDismiss()
-                    }
-                    withAnimation(.spring(response: 0.3)) {
-                        dragOffset = 0
-                    }
-                }
-        )
         .sheet(item: $nav.presentedSheet) { sheet in
             switch sheet {
             case .equalizer:
@@ -121,203 +75,375 @@ struct FullScreenPlayerView: View {
         }
     }
 
+    // MARK: - Layout
+
+    /// Artwork side for the space available. Takes the column width, capped
+    /// at a share of the height so the controls below always fit.
+    private func artworkSide(for size: CGSize) -> CGFloat {
+        let column = max(size.width - sidePadding * 2, 120)
+        let heightShare: CGFloat
+        if usesScrollingLayout {
+            heightShare = 0.30
+        } else {
+            heightShare = settingsManager.showAudioInfoStrip ? 0.39 : 0.42
+        }
+        return max(120, min(column, size.height * heightShare)).rounded(.down)
+    }
+
+    private func playerColumn(track: Track, size: CGSize) -> some View {
+        let side = artworkSide(for: size)
+        let column = max(size.width - sidePadding * 2, 120)
+        // Text and controls line up with the artwork edges, but never get
+        // narrower than ~300 pt so the transport row stays comfortable.
+        let contentWidth = min(column, max(side, 300))
+
+        return VStack(spacing: 0) {
+            header
+                .gesture(dismissDrag)
+
+            Spacer(minLength: DS.Spacing.sm)
+
+            artwork(side: side)
+                .gesture(dismissDrag)
+
+            Spacer(minLength: DS.Spacing.lg)
+
+            trackInfo(track: track)
+                .frame(width: contentWidth, alignment: .leading)
+
+            Spacer(minLength: DS.Spacing.md)
+
+            PlayerScrubber(
+                tokens: tokens,
+                isBuffering: playerManager.isRebuffering || playerManager.playbackState == .loading,
+                onSeek: { playerManager.seek(to: $0) }
+            )
+            .frame(width: contentWidth)
+
+            Spacer(minLength: DS.Spacing.sm)
+
+            transportControls
+                .frame(width: contentWidth)
+
+            Spacer(minLength: DS.Spacing.md)
+
+            secondaryControls(track: track)
+                .frame(width: contentWidth)
+
+            if settingsManager.showAudioInfoStrip {
+                Spacer(minLength: DS.Spacing.md)
+                AudioInfoStrip(track: track, tokens: tokens)
+                    .frame(width: contentWidth)
+            }
+
+            Spacer(minLength: DS.Spacing.sm)
+        }
+        .padding(.horizontal, sidePadding)
+        .frame(width: size.width)
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 0) {
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(tokens.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close player")
+
+            Spacer()
+
+            Text("ARIA")
+                .font(DS.Typography.captionStrong)
+                .tracking(4)
+                .foregroundColor(tokens.textSecondary)
+                .accessibilityHidden(true)
+
+            Spacer()
+
+            queueButton
+        }
+        .padding(.horizontal, sidePadding - 10) // optically align icons with the column
+        .padding(.top, DS.Spacing.xs)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private var queueButton: some View {
+        Button {
+            nav.presentedSheet = .queue
+        } label: {
+            Image(systemName: "list.bullet")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(playerManager.queue.isEmpty ? tokens.textSecondary : tokens.textPrimary)
+                .frame(width: 44, height: 44)
+                // Count badge anchored inside the 44 pt target so multi-digit
+                // counts grow leftward instead of spilling into the edge.
+                .overlay(alignment: .topTrailing) {
+                    if !playerManager.queue.isEmpty {
+                        Text(playerManager.queue.count > 99 ? "99+" : "\(playerManager.queue.count)")
+                            .scaledFont(size: 9, weight: .bold, relativeTo: .caption2)
+                            .foregroundColor(tokens.background)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Capsule().fill(tokens.textPrimary))
+                            .padding([.top, .trailing], 2)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(playerManager.queue.isEmpty
+                            ? "Show queue"
+                            : "Show queue, \(playerManager.queue.count) up next")
+    }
+
     // MARK: - Artwork
 
-    private func artworkSection(track: Track) -> some View {
-        let side: CGFloat = 290
-
-        return Group {
+    private func artwork(side: CGFloat) -> some View {
+        ZStack {
+            tokens.background
             if let url = playerManager.currentArtworkURL {
                 AsyncCachedImage(url: url, targetSize: side) {
-                    ArtworkPlaceholder(tokens: themeManager.tokens, cornerRadius: DS.Radius.md)
+                    ArtworkPlaceholder(tokens: tokens, cornerRadius: artworkRadius)
                 }
-                .aspectRatio(contentMode: .fit)
-                .frame(width: side, height: side)
-                .cornerRadius(DS.Radius.md)
-                .shadow(color: .black.opacity(0.3), radius: 16, y: 4)
+                // A new identity per URL so the previous track's image is
+                // never shown while the next one decodes.
+                .id(url)
             } else {
-                ArtworkPlaceholder(tokens: themeManager.tokens, cornerRadius: DS.Radius.md)
-                    .frame(width: side, height: side)
-                    .cornerRadius(DS.Radius.md)
+                ArtworkPlaceholder(tokens: tokens, cornerRadius: artworkRadius)
             }
         }
-        .padding(.bottom, DS.Spacing.xl)
+        .frame(width: side, height: side)
+        .clipShape(RoundedRectangle(cornerRadius: artworkRadius, style: .continuous))
+        .overlay(
+            // Defines the edge of dark covers against a black screen.
+            RoundedRectangle(cornerRadius: artworkRadius, style: .continuous)
+                .stroke(tokens.hairline, lineWidth: 0.5)
+        )
+        // No glow on OLED; a soft drop shadow only in Light/Dark.
+        .shadow(color: tokens.isOLED ? .clear : .black.opacity(0.22),
+                radius: tokens.isOLED ? 0 : 12, y: tokens.isOLED ? 0 : 4)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Track Info
 
-    private func trackInfoSection(track: Track) -> some View {
-        VStack(spacing: 4) {
+    private func trackInfo(track: Track) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             Text(track.title)
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(DS.Typography.titleLarge)
+                .foregroundColor(tokens.textPrimary)
                 .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .foregroundColor(themeManager.textPrimary)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Text(track.artist)
-                .font(.body)
-                .foregroundColor(themeManager.textSecondary)
+            Text(subtitle(for: track))
+                .font(DS.Typography.body)
+                .foregroundColor(tokens.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .padding(.bottom, DS.Spacing.lg)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityTitle(for: track))
     }
 
-    // MARK: - Seek Bar
-
-    private var seekBarSection: some View {
-        VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { clock.currentTime },
-                    set: { playerManager.seek(to: $0) }
-                ),
-                in: 0...max(clock.duration, 1)
-            ) {
-                Text("Seek")
-            }
-            .tint(themeManager.theme.accentColor)
-            // Native Slider announces a bare percentage; give VoiceOver a
-            // meaningful position ("1:05 of 3:20") and an adjustable label.
-            .accessibilityLabel("Playback position")
-            .accessibilityValue("\(formatTime(clock.currentTime)) of \(formatTime(clock.duration))")
-
-            HStack {
-                Text(formatTime(clock.currentTime))
-                    .font(.caption2)
-                    .foregroundColor(themeManager.textSecondary)
-                Spacer()
-                if playerManager.isRebuffering {
-                    HStack(spacing: 4) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Buffering…")
-                            .font(.caption2)
-                            .foregroundColor(themeManager.textSecondary)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Buffering")
-                    Spacer()
-                }
-                Text("-\(formatTime(max(0, clock.duration - clock.currentTime)))")
-                    .font(.caption2)
-                    .foregroundColor(themeManager.textSecondary)
-            }
+    /// "Artist — Album", or just the artist when the album is unknown.
+    private func subtitle(for track: Track) -> String {
+        if let album = track.album?.trimmingCharacters(in: .whitespaces), !album.isEmpty {
+            return "\(track.artist) — \(album)"
         }
-        .padding(.bottom, 20)
+        return track.artist
     }
 
-    // MARK: - Transport Controls
+    private func accessibilityTitle(for track: Track) -> String {
+        var text = "\(track.title), by \(track.artist)"
+        if let album = track.album, !album.isEmpty { text += ", from \(album)" }
+        return text
+    }
+
+    // MARK: - Transport
 
     private var transportControls: some View {
-        HStack(spacing: DS.Spacing.xxl) {
-            Button { playerManager.toggleShuffle() } label: {
-                Image(systemName: "shuffle")
-                    .font(.title3)
-                    .foregroundColor(playerManager.isShuffled ? themeManager.theme.accentColor : themeManager.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+        HStack(spacing: 0) {
+            transportButton(icon: "shuffle", size: 18,
+                            color: playerManager.isShuffled ? tokens.accent : tokens.textSecondary,
+                            label: playerManager.isShuffled ? "Shuffle on" : "Shuffle off") {
+                playerManager.toggleShuffle()
             }
-            .accessibilityLabel(playerManager.isShuffled ? "Shuffle on" : "Shuffle off")
 
-            Button { playerManager.previousTrack() } label: {
-                Image(systemName: "backward.fill")
-                    .font(.title)
-                    .foregroundColor(themeManager.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            transportButton(icon: "backward.fill", size: 26, color: tokens.textPrimary,
+                            label: "Previous track") {
+                playerManager.previousTrack()
             }
-            .accessibilityLabel("Previous track")
 
-            Button { playerManager.togglePlayPause() } label: {
-                Image(systemName: playerManager.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 44))
-                    .foregroundColor(themeManager.textPrimary)
-            }
-            .accessibilityLabel(playerManager.isPlaying ? "Pause" : "Play")
+            playPauseButton
+                .frame(maxWidth: .infinity)
 
-            Button { playerManager.nextTrack() } label: {
-                Image(systemName: "forward.fill")
-                    .font(.title)
-                    .foregroundColor(themeManager.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            transportButton(icon: "forward.fill", size: 26, color: tokens.textPrimary,
+                            label: "Next track") {
+                playerManager.nextTrack()
             }
-            .accessibilityLabel("Next track")
 
-            Button { playerManager.cycleRepeatMode() } label: {
-                Image(systemName: repeatIcon)
-                    .font(.title3)
-                    .foregroundColor(playerManager.repeatMode != .off ? themeManager.theme.accentColor : themeManager.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            transportButton(icon: playerManager.repeatMode == .one ? "repeat.1" : "repeat", size: 18,
+                            color: playerManager.repeatMode != .off ? tokens.accent : tokens.textSecondary,
+                            label: repeatAccessibilityLabel) {
+                playerManager.cycleRepeatMode()
             }
-            .accessibilityLabel("Repeat mode: \(playerManager.repeatMode == .off ? "off" : playerManager.repeatMode == .one ? "one" : "all")")
         }
-        .padding(.bottom, DS.Spacing.xl)
     }
 
-    private var repeatIcon: String {
+    private func transportButton(icon: String, size: CGFloat, color: Color, label: String,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 52, height: 52)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(label)
+    }
+
+    /// Solid disc, background-coloured glyph: the one high-contrast control.
+    /// Shows a spinner while the track loads instead of a misleading glyph.
+    private var playPauseButton: some View {
+        Button {
+            Haptics.light()
+            playerManager.togglePlayPause()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(tokens.textPrimary)
+                if playerManager.playbackState == .loading {
+                    ProgressView()
+                        .tint(tokens.background)
+                } else {
+                    Image(systemName: playerManager.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(tokens.background)
+                        // Optical centring: the play triangle sits left-heavy.
+                        .offset(x: playerManager.isPlaying ? 0 : 2)
+                }
+            }
+            .frame(width: 66, height: 66)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(playerManager.playbackState == .loading
+                            ? "Loading"
+                            : (playerManager.isPlaying ? "Pause" : "Play"))
+    }
+
+    private var repeatAccessibilityLabel: String {
         switch playerManager.repeatMode {
-        case .off: return "repeat"
-        case .one: return "repeat.1"
-        case .all: return "repeat"
+        case .off: return "Repeat mode: off"
+        case .one: return "Repeat mode: one"
+        case .all: return "Repeat mode: all"
         }
     }
 
-    // MARK: - Secondary Controls
+    // MARK: - Secondary actions
 
     private func secondaryControls(track: Track) -> some View {
-        HStack(spacing: 28) {
-            Button {
+        let isFavorite = favoritesManager.isFavorite(track)
+
+        return HStack(spacing: 0) {
+            secondaryButton(label: isFavorite ? "Remove from favorites" : "Add to favorites") {
                 favoritesManager.toggle(track)
                 if favoritesManager.isFavorite(track) {
                     recentlyPlayedManager.trackAdded(track)
                 }
-            } label: {
-                Image(systemName: favoritesManager.isFavorite(track) ? "heart.fill" : "heart")
-                    .font(.title3)
-                    .foregroundColor(favoritesManager.isFavorite(track) ? .red : themeManager.textPrimary)
+            } content: {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .foregroundColor(isFavorite ? .red : tokens.textSecondary)
             }
-            .accessibilityLabel(favoritesManager.isFavorite(track) ? "Remove from favorites" : "Add to favorites")
 
-            DownloadButton(track: track)
+            if !track.isLocal {
+                DownloadButton(track: track)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
 
-            Button { nav.presentedSheet = .addToPlaylist } label: {
+            secondaryButton(label: "Add to playlist") {
+                nav.presentedSheet = .addToPlaylist
+            } content: {
                 Image(systemName: "text.badge.plus")
-                    .font(.title3)
-                    .foregroundColor(themeManager.textPrimary)
+                    .foregroundColor(tokens.textSecondary)
             }
-            .accessibilityLabel("Add to playlist")
 
-            Button { nav.presentedSheet = .equalizer } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.title3)
-                    .foregroundColor(themeManager.textPrimary)
+            secondaryButton(label: "Equalizer", value: eqAccessibilityValue) {
+                nav.presentedSheet = .equalizer
+            } content: {
+                eqPill
             }
-            .accessibilityLabel("Equalizer")
 
-            Button { nav.presentedSheet = .speedAndPitch } label: {
+            secondaryButton(label: "Speed and pitch", value: tuningAccessibilityValue) {
+                nav.presentedSheet = .speedAndPitch
+            } content: {
                 Text(speedLabel(playerManager.playbackRate))
-                    .scaledFont(size: 15, weight: .semibold, relativeTo: .subheadline)
+                    .scaledFont(size: 14, weight: .semibold, relativeTo: .subheadline)
                     .monospacedDigit()
-                    // Wide enough for "0.81×", so fine values don't shift the row.
-                    .frame(minWidth: 46)
-                    .foregroundColor(isTuningAtDefault
-                                     ? themeManager.textPrimary
-                                     : themeManager.theme.accentColor)
+                    .foregroundColor(isTuningAtDefault ? tokens.textSecondary : tokens.accent)
             }
-            .accessibilityLabel("Speed and pitch")
-            .accessibilityValue(tuningAccessibilityValue)
 
             // Share the song's name, not the thumbnail image. See
             // `Track.shareText` for why this is never a URL.
             ShareLink(item: track.shareText, subject: Text(track.title)) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.title3)
-                    .foregroundColor(themeManager.textPrimary)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(tokens.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share")
         }
-        .padding(.bottom, DS.Spacing.xxl)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private func secondaryButton<Content: View>(label: String, value: String? = nil,
+                                                action: @escaping () -> Void,
+                                                @ViewBuilder content: () -> Content) -> some View {
+        Button(action: action) {
+            content()
+                .font(.system(size: 18, weight: .regular))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(value ?? "")
+    }
+
+    /// "EQ" in a hairline capsule; accent-filled when any EQ is active.
+    private var eqPill: some View {
+        Text("EQ")
+            .scaledFont(size: 12, weight: .bold, relativeTo: .caption)
+            .tracking(1)
+            .foregroundColor(eqController.isEnabled ? tokens.accent : tokens.textSecondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(eqController.isEnabled ? tokens.accentSubtle : Color.clear)
+            )
+            .overlay(
+                Capsule().stroke(eqController.isEnabled ? tokens.accent.opacity(0.6) : tokens.hairline,
+                                 lineWidth: 1)
+            )
+    }
+
+    private var eqAccessibilityValue: String {
+        if let preset = eqController.parametric { return "On, \(preset.name)" }
+        return eqController.isEnabled ? "On" : "Off"
     }
 
     /// "1×", "0.5×", "1.25×" — `%g` trims trailing zeros.
@@ -336,22 +462,76 @@ struct FullScreenPlayerView: View {
         return speed + ", pitch " + String(format: "%+.1f", playerManager.playbackPitch) + " semitones"
     }
 
+    // MARK: - Empty state
+
+    /// Shown when nothing is loaded. No placeholder artwork, no fake specs.
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            header
+                .gesture(dismissDrag)
+            Spacer()
+            VStack(spacing: DS.Spacing.md) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundColor(tokens.textDisabled)
+                    .accessibilityHidden(true)
+                Text("Nothing Playing")
+                    .font(DS.Typography.titleMedium)
+                    .foregroundColor(tokens.textPrimary)
+                Text("Choose a track from your library to start listening.")
+                    .font(DS.Typography.body)
+                    .foregroundColor(tokens.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, DS.Spacing.xxl)
+            Spacer()
+            Spacer()
+        }
+    }
+
+    // MARK: - Dismiss gesture
+
+    /// Pull-down-to-close. Attached to the header and artwork only, so it can
+    /// never fight the scrubber, the controls or a scrolling layout.
+    private var dismissDrag: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                if value.translation.height > 0 {
+                    dragOffset = value.translation.height
+                }
+            }
+            .onEnded { value in
+                if value.translation.height > dragThreshold {
+                    onDismiss()
+                }
+                if reduceMotion {
+                    dragOffset = 0
+                } else {
+                    withAnimation(.spring(response: 0.3)) {
+                        dragOffset = 0
+                    }
+                }
+            }
+    }
+
     // MARK: - Add to Playlist Sheet
 
     private var addToPlaylistSheet: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                tokens.background.ignoresSafeArea()
                 if playlistsManager.playlists.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "music.note.list")
                             .font(.system(size: 40))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(tokens.textSecondary)
                         Text("No Playlists")
                             .font(.title3)
                             .fontWeight(.semibold)
+                            .foregroundColor(tokens.textPrimary)
                         Text("Create a playlist first")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(tokens.textSecondary)
                     }
                 } else {
                     List(playlistsManager.playlists) { playlist in
@@ -366,18 +546,23 @@ struct FullScreenPlayerView: View {
                                 VStack(alignment: .leading) {
                                     Text(playlist.name)
                                         .font(.body)
+                                        .foregroundColor(tokens.textPrimary)
                                     Text("\(playlist.tracks.count) tracks")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(tokens.textSecondary)
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle")
-                                    .foregroundColor(themeManager.theme.accentColor)
+                                    .foregroundColor(tokens.accent)
                             }
                         }
+                        .listRowBackground(tokens.background)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("Add to Playlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -386,14 +571,5 @@ struct FullScreenPlayerView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Helpers
-
-    private func formatTime(_ time: TimeInterval) -> String {
-        let t = Int(max(0, time))
-        let m = t / 60
-        let s = t % 60
-        return String(format: "%d:%02d", m, s)
     }
 }
