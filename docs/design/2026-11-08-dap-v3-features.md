@@ -77,3 +77,22 @@ try-lock and preallocated storage — no waiting, no allocation.
 `DAPProcessingTests`, `TrackAnalyzerTests` (synthesised WAVs: sine loudness/
 peak/DR, band-limited transcode signature, full-band noise, padded bit
 depth, 120 BPM click track), `LibraryRadioAndTransferTests`.
+
+## Galaxy
+
+- `Services/Analysis/GalaxyLayout.swift` — exact t-SNE (perplexity ≤ 30,
+  PCA init, 12× early exaggeration for the first third, momentum + gains)
+  on the six Library Radio features, z-scored and weighted. Deterministic.
+  ≤ 1 500 tracks (500 iterations above 800); larger libraries use PCA only.
+  Output normalised to ±1 (99th-percentile radius).
+- `LibraryAnalysisManager.buildGalaxyIfNeeded()` — detached build, keyed by
+  the set of analysed tracks (id, version, size); rebuilt after a library
+  analysis run finishes. Star colour = rank of spectral centroid (amber →
+  white → blue), size = rank of integrated loudness.
+- `Views/Library/GalaxyView.swift` — single `Canvas`; drag/pinch/tap
+  (`SpatialTapGesture`), selection draws lines to the 19 nearest stars;
+  "Neighbourhood" plays them as a nearest-next walk. Now playing = accent
+  ring; "scope" button flies to it. Titles appear at zoom ≥ 2.6 (max 45).
+  Always black. Entry: Library toolbar ✦ and More → DAP → Galaxy.
+- Tests: `GalaxyLayoutTests` (range, cluster preservation, determinism,
+  tiny and degenerate inputs).
