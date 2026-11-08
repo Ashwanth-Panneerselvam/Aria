@@ -9,6 +9,7 @@ struct MoreView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
     @EnvironmentObject private var petStore: PetStore
+    @State private var showDialMode = false
 
     @State private var showClearFavoritesAlert = false
     @State private var showDeletePlaylistsAlert = false
@@ -590,6 +591,23 @@ struct MoreView: View {
     private var dapToolsSection: some View {
         MoreCard(title: "DAP", tokens: tokens) {
             VStack(spacing: 0) {
+                Button {
+                    Haptics.medium()
+                    showDialMode = true
+                } label: {
+                    row(icon: "dial.min", iconColor: tokens.accent, title: "Dial Mode", isButton: true) {
+                        Text("Retro wheel player")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .fullScreenCover(isPresented: $showDialMode) {
+                    DialModeView()
+                }
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
                 NavigationLink {
                     GalaxyView()
                 } label: {
