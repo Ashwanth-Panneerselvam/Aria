@@ -37,6 +37,7 @@ struct MoreView: View {
                     .padding(.bottom, 120)
                 }
             }
+            .ariaNavigationBar()
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -463,19 +464,30 @@ struct MoreView: View {
 
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
+                appearanceRow
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
                 HStack(spacing: DS.Spacing.md) {
-                    iconBadge(systemName: "moon.circle", color: tokens.accent)
-                    Text("Dark Mode")
-                        .font(DS.Typography.body)
-                        .foregroundColor(tokens.textPrimary)
+                    iconBadge(systemName: "waveform", color: tokens.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Audio Info Strip")
+                            .font(DS.Typography.body)
+                            .foregroundColor(tokens.textPrimary)
+                        Text("Codec, bit depth and sample rate in the player")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { themeManager.isDarkMode },
-                        set: { _ in
+                    Toggle("Audio Info Strip", isOn: Binding(
+                        get: { settingsManager.showAudioInfoStrip },
+                        set: { newValue in
                             Haptics.light()
-                            themeManager.toggleDarkMode()
+                            settingsManager.showAudioInfoStrip = newValue
+                            settingsManager.save()
                         }
                     ))
+                    .labelsHidden()
                     .tint(tokens.accent)
                 }
                 .padding(.horizontal, DS.Spacing.md)
@@ -524,6 +536,7 @@ struct MoreView: View {
                 .padding(DS.Spacing.lg)
             }
         }
+        .ariaNavigationBar()
         .navigationTitle("Themes")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -567,6 +580,42 @@ struct MoreView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Appearance
+
+    /// Light / Dark / True Black. A segmented control keeps all three choices
+    /// visible at once; selection applies immediately and persists.
+    private var appearanceRow: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            HStack(spacing: DS.Spacing.md) {
+                iconBadge(systemName: "circle.lefthalf.filled", color: tokens.accent)
+                Text("Appearance")
+                    .font(DS.Typography.body)
+                    .foregroundColor(tokens.textPrimary)
+                Spacer()
+            }
+            Picker("Appearance", selection: Binding(
+                get: { themeManager.appearance },
+                set: { mode in
+                    Haptics.selection()
+                    themeManager.setAppearance(mode)
+                }
+            )) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.leading, 40)
+            Text(themeManager.appearance.detail)
+                .font(DS.Typography.caption)
+                .foregroundColor(tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 40)
+        }
+        .padding(.horizontal, DS.Spacing.md)
+        .padding(.vertical, DS.Spacing.md)
     }
 
     // MARK: - Version

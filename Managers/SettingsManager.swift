@@ -34,7 +34,12 @@ final class SettingsManager: ObservableObject {
     /// Library, not Favorites: a first-run user has no favorites and needs
     /// the Import button in front of them. A saved choice still wins (`load()`).
     @Published var defaultStartTab: DefaultStartTab = .library
-    @Published var isDarkMode: Bool = true
+    /// Light / Dark / True Black. Persisted under `AppearanceMode.storageKey`;
+    /// migrated from the legacy `dark_mode` Bool on first launch of v2.
+    @Published var appearanceMode: AppearanceMode = .default
+    /// Show the source-format strip (codec · bit depth · sample rate · EQ) at
+    /// the bottom of the full-screen player.
+    @Published var showAudioInfoStrip: Bool = true
     @Published var selectedThemeID: String = "blue"
     @Published var sleepTimer: SleepTimerDuration = .off
     @Published private(set) var searchHistory: [String] = []
@@ -81,6 +86,12 @@ final class SettingsManager: ObservableObject {
                                    subsonicPassword: subsonicPassword)
     }
 
+    /// Derived from `appearanceMode` — kept so existing call sites that only
+    /// care about light vs. dark keep compiling. Not separately stored.
+    var isDarkMode: Bool { appearanceMode.isDark }
+
+    static let showAudioInfoStripKey = "show_audio_info_strip"
+
     private let maxHistoryItems = 20
     private let defaults = UserDefaults.standard
     /// What the Keychain currently holds, so `save()` only writes on a change.
@@ -112,7 +123,11 @@ final class SettingsManager: ObservableObject {
     private func load() {
         if let raw = defaults.string(forKey: "default_start_tab"),
            let val = DefaultStartTab(rawValue: raw) { defaultStartTab = val }
-        isDarkMode = defaults.object(forKey: "dark_mode") as? Bool ?? true
+        appearanceMode = AppearanceMode.resolve(
+            storedRawValue: defaults.string(forKey: AppearanceMode.storageKey),
+            legacyIsDark: defaults.object(forKey: AppearanceMode.legacyDarkModeKey) as? Bool
+        )
+        showAudioInfoStrip = defaults.object(forKey: Self.showAudioInfoStripKey) as? Bool ?? true
         selectedThemeID = defaults.string(forKey: "theme_id") ?? "blue"
         // The sleep timer is intentionally NOT restored. It's ephemeral —
         // nothing re-arms it at launch, so restoring a stale "30 min"
@@ -131,7 +146,11 @@ final class SettingsManager: ObservableObject {
 
     func save() {
         defaults.set(defaultStartTab.rawValue, forKey: "default_start_tab")
-        defaults.set(isDarkMode, forKey: "dark_mode")
+        defaults.set(appearanceMode.rawValue, forKey: AppearanceMode.storageKey)
+        // Keep the legacy Bool in step so rolling back to a pre-v2 build
+        // lands on Dark (for Dark or True Black) rather than its default.
+        defaults.set(appearanceMode.isDark, forKey: AppearanceMode.legacyDarkModeKey)
+        defaults.set(showAudioInfoStrip, forKey: Self.showAudioInfoStripKey)
         defaults.set(selectedThemeID, forKey: "theme_id")
         // Sleep timer is ephemeral and deliberately not persisted (see load()).
         defaults.set(searchHistory, forKey: "search_history")
@@ -152,6 +171,11 @@ final class SettingsManager: ObservableObject {
 
     func setTheme(_ id: String) {
         selectedThemeID = id
+        save()
+    }
+
+    func setAppearance(_ mode: AppearanceMode) {
+        appearanceMode = mode
         save()
     }
 }
