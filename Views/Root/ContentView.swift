@@ -16,6 +16,7 @@ struct ContentView: View {
     @EnvironmentObject private var librarySearchManager: LibrarySearchManager
     @EnvironmentObject private var analysisManager: LibraryAnalysisManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
+    @EnvironmentObject private var petStore: PetStore
 
     @State private var selectedTab: AppTab
     @State private var showFullPlayer = false
@@ -138,6 +139,9 @@ struct ContentView: View {
             case .favorites: selectedTab = .favorites
             case .library:   selectedTab = .library
             }
+        }
+        .onChange(of: playerManager.currentTrack?.id) { id in
+            petStore.trackStarted(id)
         }
         .onChange(of: soundProcessingManager.settings) { settings in
             playerManager.applySoundProcessing(settings.makeConfig())

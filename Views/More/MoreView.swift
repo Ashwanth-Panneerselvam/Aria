@@ -8,6 +8,7 @@ struct MoreView: View {
     @EnvironmentObject private var recentlyPlayedManager: RecentlyPlayedManager
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
+    @EnvironmentObject private var petStore: PetStore
 
     @State private var showClearFavoritesAlert = false
     @State private var showDeletePlaylistsAlert = false
@@ -627,6 +628,20 @@ struct MoreView: View {
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
                 NavigationLink {
+                    ABXChallengeView()
+                } label: {
+                    row(icon: "ear.badge.checkmark", iconColor: tokens.accent, title: "ABX Challenge",
+                        isButton: true) {
+                        Text("Can you hear lossless?")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
                     WiFiTransferView()
                 } label: {
                     row(icon: "wifi", iconColor: tokens.accent, title: "Wi-Fi Transfer", isButton: true)
@@ -646,6 +661,33 @@ struct MoreView: View {
                         set: { newValue in
                             Haptics.light()
                             settingsManager.showWaveformSeekBar = newValue
+                            settingsManager.save()
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(tokens.accent)
+                }
+                .padding(.horizontal, DS.Spacing.md)
+                .padding(.vertical, DS.Spacing.md)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                HStack(spacing: DS.Spacing.md) {
+                    iconBadge(systemName: "pawprint", color: tokens.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pet")
+                            .font(DS.Typography.body)
+                            .foregroundColor(tokens.textPrimary)
+                        Text("A tiny creature on Now Playing — \(petStore.stage.label)")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                    Spacer()
+                    Toggle("Pet", isOn: Binding(
+                        get: { settingsManager.showPet },
+                        set: { newValue in
+                            Haptics.light()
+                            settingsManager.showPet = newValue
                             settingsManager.save()
                         }
                     ))

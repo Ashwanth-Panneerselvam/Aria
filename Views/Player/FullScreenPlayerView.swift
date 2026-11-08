@@ -143,8 +143,14 @@ struct FullScreenPlayerView: View {
 
             Spacer(minLength: DS.Spacing.lg)
 
-            trackInfo(track: track)
-                .frame(width: contentWidth, alignment: .leading)
+            HStack(alignment: .bottom, spacing: DS.Spacing.sm) {
+                trackInfo(track: track)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if settingsManager.showPet {
+                    PetView()
+                }
+            }
+            .frame(width: contentWidth, alignment: .leading)
 
             Spacer(minLength: DS.Spacing.md)
 

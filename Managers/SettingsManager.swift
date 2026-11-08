@@ -42,6 +42,8 @@ final class SettingsManager: ObservableObject {
     @Published var showAudioInfoStrip: Bool = true
     /// Draw the seek bar as the track's loudness waveform (needs analysis).
     @Published var showWaveformSeekBar: Bool = true
+    /// The little creature on the Now Playing screen.
+    @Published var showPet: Bool = true
     @Published var selectedThemeID: String = "blue"
     @Published var sleepTimer: SleepTimerDuration = .off
     @Published private(set) var searchHistory: [String] = []
@@ -94,6 +96,7 @@ final class SettingsManager: ObservableObject {
 
     static let showAudioInfoStripKey = "show_audio_info_strip"
     static let showWaveformSeekBarKey = "show_waveform_seek_bar"
+    static let showPetKey = "show_pet"
 
     private let maxHistoryItems = 20
     private let defaults = UserDefaults.standard
@@ -132,6 +135,7 @@ final class SettingsManager: ObservableObject {
         )
         showAudioInfoStrip = defaults.object(forKey: Self.showAudioInfoStripKey) as? Bool ?? true
         showWaveformSeekBar = defaults.object(forKey: Self.showWaveformSeekBarKey) as? Bool ?? true
+        showPet = defaults.object(forKey: Self.showPetKey) as? Bool ?? true
         selectedThemeID = defaults.string(forKey: "theme_id") ?? "blue"
         // The sleep timer is intentionally NOT restored. It's ephemeral —
         // nothing re-arms it at launch, so restoring a stale "30 min"
@@ -156,6 +160,7 @@ final class SettingsManager: ObservableObject {
         defaults.set(appearanceMode.isDark, forKey: AppearanceMode.legacyDarkModeKey)
         defaults.set(showAudioInfoStrip, forKey: Self.showAudioInfoStripKey)
         defaults.set(showWaveformSeekBar, forKey: Self.showWaveformSeekBarKey)
+        defaults.set(showPet, forKey: Self.showPetKey)
         defaults.set(selectedThemeID, forKey: "theme_id")
         // Sleep timer is ephemeral and deliberately not persisted (see load()).
         defaults.set(searchHistory, forKey: "search_history")

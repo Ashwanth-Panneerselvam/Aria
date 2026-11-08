@@ -21,6 +21,7 @@ struct AriaApp: App {
     @StateObject private var librarySearchManager = LibrarySearchManager()
     @StateObject private var analysisManager = LibraryAnalysisManager(store: JSONFileStore(filename: "track_analysis.json"))
     @StateObject private var soundProcessingManager = SoundProcessingManager()
+    @StateObject private var petStore = PetStore()
 
     init() {
         do {
@@ -86,6 +87,7 @@ struct AriaApp: App {
                 .environmentObject(librarySearchManager)
                 .environmentObject(analysisManager)
                 .environmentObject(soundProcessingManager)
+                .environmentObject(petStore)
                 .task { playerManager.warmUpBackend() }
         }
     }
