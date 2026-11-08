@@ -43,6 +43,16 @@ nonisolated struct TrackAnalysis: Codable, Equatable {
 
     var features: Features
 
+    /// Header facts captured at analysis time (from `AudioSourceInfo`).
+    var codec: String? = nil
+    var isLossless: Bool? = nil
+    var declaredBitDepth: Int? = nil
+
+    /// Quality hints for this file.
+    var hints: [QualityHint] {
+        QualityHint.hints(for: self, isLossless: isLossless ?? false, declaredBitDepth: declaredBitDepth)
+    }
+
     /// Inputs for library radio similarity.
     nonisolated struct Features: Codable, Equatable {
         var tempoBPM: Double?

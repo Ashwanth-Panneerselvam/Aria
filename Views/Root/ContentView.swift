@@ -14,6 +14,8 @@ struct ContentView: View {
     @EnvironmentObject private var smartPlaylistsManager: SmartPlaylistsManager
     @EnvironmentObject private var savedEQProfilesManager: SavedEQProfilesManager
     @EnvironmentObject private var librarySearchManager: LibrarySearchManager
+    @EnvironmentObject private var analysisManager: LibraryAnalysisManager
+    @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
 
     @State private var selectedTab: AppTab
     @State private var showFullPlayer = false
@@ -137,6 +139,9 @@ struct ContentView: View {
             case .library:   selectedTab = .library
             }
         }
+        .onChange(of: soundProcessingManager.settings) { settings in
+            playerManager.applySoundProcessing(settings.makeConfig())
+        }
         .onChange(of: settingsManager.isServerConfigured) { configured in
             // Losing the server while on Search would strand a hidden tab.
             // Watching the derived flag covers every input that feeds it —
@@ -163,6 +168,8 @@ struct ContentView: View {
         .onAppear {
             // Connect favorites so the lock-screen Like command works.
             playerManager.configureFavorites(favoritesManager)
+            analysisManager.configure(library: localLibraryManager)
+            playerManager.applySoundProcessing(soundProcessingManager.config)
             playerManager.configureDownloads(downloadManager)
             librarySearchManager.configure(
                 favorites: favoritesManager,
@@ -194,6 +201,7 @@ struct ContentView: View {
         eqController.flushPendingWrites()
         smartPlaylistsManager.flushPendingWrites()
         savedEQProfilesManager.flushPendingWrites()
+        analysisManager.flushPendingWrites()
         librarySearchManager.flushPendingWrites()
     }
 

@@ -511,6 +511,11 @@ final class PlayerManager: NSObject, ObservableObject {
         handleEQOutcome(outcome)
     }
 
+    /// Crossfeed / personal tuning / hearing profile, applied after the EQ.
+    func applySoundProcessing(_ config: DAPConfig) {
+        avPlayerPath.updateDAP(config)
+    }
+
     func resetEQ() {
         _ = eq.reset()
         avPlayerPath.setEQEnabled(false)

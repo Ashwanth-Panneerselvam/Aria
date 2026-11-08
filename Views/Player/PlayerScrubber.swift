@@ -16,6 +16,9 @@ struct PlayerScrubber: View {
     /// "Buffering…" instead of a remaining time, so a stalled clock never
     /// reads as normal progress.
     let isBuffering: Bool
+    /// Loudness envelope (0…1) for a waveform-style bar; nil draws the slim
+    /// line. Comes from `LibraryAnalysisManager` — computed once per track.
+    var waveform: [Float]? = nil
     let onSeek: (TimeInterval) -> Void
 
     /// Fraction under the finger while dragging; nil when idle.
@@ -68,17 +71,21 @@ struct PlayerScrubber: View {
             let dragging = dragFraction != nil
             let barHeight: CGFloat = dragging ? 6 : 3
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(tokens.isOLED ? tokens.hairline : tokens.textPrimary.opacity(0.15))
-                    .frame(height: barHeight)
-                Capsule()
-                    .fill(hasDuration ? tokens.textPrimary : tokens.textDisabled)
-                    .frame(width: max(barHeight, width * fraction), height: barHeight)
-                if dragging {
-                    Circle()
-                        .fill(tokens.textPrimary)
-                        .frame(width: 14, height: 14)
-                        .offset(x: width * fraction - 7)
+                if let waveform, !waveform.isEmpty {
+                    waveformBar(waveform, width: width, height: geo.size.height, dragging: dragging)
+                } else {
+                    Capsule()
+                        .fill(tokens.isOLED ? tokens.hairline : tokens.textPrimary.opacity(0.15))
+                        .frame(height: barHeight)
+                    Capsule()
+                        .fill(hasDuration ? tokens.textPrimary : tokens.textDisabled)
+                        .frame(width: max(barHeight, width * fraction), height: barHeight)
+                    if dragging {
+                        Circle()
+                            .fill(tokens.textPrimary)
+                            .frame(width: 14, height: 14)
+                            .offset(x: width * fraction - 7)
+                    }
                 }
             }
             .frame(width: width, height: geo.size.height)
@@ -104,6 +111,31 @@ struct PlayerScrubber: View {
         }
         // 44 pt touch target around a 3 pt line.
         .frame(height: 44)
+    }
+
+    /// Bars for the track's loudness, played part bright, rest dim. The
+    /// bar shape is built once per size; only the mask width follows the
+    /// playhead.
+    private func waveformBar(_ levels: [Float], width: CGFloat, height: CGFloat,
+                             dragging: Bool) -> some View {
+        let shape = WaveformBars(levels: levels)
+        let barArea = min(height, 34)
+        return ZStack(alignment: .leading) {
+            shape
+                .fill(tokens.isOLED ? tokens.hairline : tokens.textPrimary.opacity(0.18))
+            shape
+                .fill(hasDuration ? tokens.textPrimary : tokens.textDisabled)
+                .mask(alignment: .leading) {
+                    Rectangle().frame(width: max(0, width * fraction))
+                }
+            if dragging {
+                Rectangle()
+                    .fill(tokens.accent)
+                    .frame(width: 2, height: barArea + 6)
+                    .offset(x: max(0, width * fraction - 1))
+            }
+        }
+        .frame(width: width, height: barArea)
     }
 
     // MARK: - Times
@@ -140,5 +172,29 @@ struct PlayerScrubber: View {
         return h > 0
             ? String(format: "%d:%02d:%02d", h, m, s)
             : String(format: "%d:%02d", m, s)
+    }
+}
+
+/// Vertical bars, one per ~3 pt, heights from a 0…1 loudness envelope.
+struct WaveformBars: Shape {
+    let levels: [Float]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard !levels.isEmpty, rect.width > 0 else { return path }
+        let barCount = max(1, Int(rect.width / 3))
+        let step = rect.width / CGFloat(barCount)
+        let barWidth = max(1, step * 0.62)
+        let n = levels.count
+        for i in 0..<barCount {
+            let s0 = i * n / barCount
+            let s1 = max(s0 + 1, (i + 1) * n / barCount)
+            var level: Float = 0
+            for j in s0..<min(s1, n) { level = max(level, levels[j]) }
+            let h = max(2, CGFloat(level) * rect.height)
+            let r = CGRect(x: CGFloat(i) * step, y: rect.midY - h / 2, width: barWidth, height: h)
+            path.addRoundedRect(in: r, cornerSize: CGSize(width: barWidth / 2, height: barWidth / 2))
+        }
+        return path
     }
 }

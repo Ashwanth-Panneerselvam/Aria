@@ -7,6 +7,7 @@ struct MoreView: View {
     @EnvironmentObject private var playlistsManager: PlaylistsManager
     @EnvironmentObject private var recentlyPlayedManager: RecentlyPlayedManager
     @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
 
     @State private var showClearFavoritesAlert = false
     @State private var showDeletePlaylistsAlert = false
@@ -26,6 +27,7 @@ struct MoreView: View {
                 ScrollView {
                     VStack(spacing: DS.Spacing.xl) {
                         heroHeader
+                        dapToolsSection
                         settingsSection
                         backendSection
                         advancedSection
@@ -580,6 +582,77 @@ struct MoreView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - DAP Tools
+
+    private var dapToolsSection: some View {
+        MoreCard(title: "DAP", tokens: tokens) {
+            VStack(spacing: 0) {
+                NavigationLink {
+                    SoundProcessingView()
+                } label: {
+                    row(icon: "slider.vertical.3", iconColor: tokens.accent, title: "Sound",
+                        isButton: true) {
+                        Text(soundSummary)
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
+                    LibraryAuditView()
+                } label: {
+                    row(icon: "waveform.badge.magnifyingglass", iconColor: tokens.accent,
+                        title: "Library Audit", isButton: true)
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
+                    WiFiTransferView()
+                } label: {
+                    row(icon: "wifi", iconColor: tokens.accent, title: "Wi-Fi Transfer", isButton: true)
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                HStack(spacing: DS.Spacing.md) {
+                    iconBadge(systemName: "waveform", color: tokens.accent)
+                    Text("Waveform Seek Bar")
+                        .font(DS.Typography.body)
+                        .foregroundColor(tokens.textPrimary)
+                    Spacer()
+                    Toggle("Waveform Seek Bar", isOn: Binding(
+                        get: { settingsManager.showWaveformSeekBar },
+                        set: { newValue in
+                            Haptics.light()
+                            settingsManager.showWaveformSeekBar = newValue
+                            settingsManager.save()
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(tokens.accent)
+                }
+                .padding(.horizontal, DS.Spacing.md)
+                .padding(.vertical, DS.Spacing.md)
+            }
+        }
+    }
+
+    /// "Crossfeed Natural · Tuned", "Off", …
+    private var soundSummary: String {
+        let s = soundProcessingManager.settings
+        var parts: [String] = []
+        if s.crossfeed != .off { parts.append("Crossfeed \(s.crossfeed.displayName)") }
+        if s.tuningEnabled && !s.isTuningFlat { parts.append("Tuned") }
+        if s.applyHearing && s.hearing != nil { parts.append("Hearing") }
+        return parts.isEmpty ? "Off" : parts.joined(separator: " · ")
     }
 
     // MARK: - Appearance

@@ -32,6 +32,7 @@ struct LibraryView: View {
     @AppStorage("libraryGroupBy") private var groupByRaw: String = LibraryGroupBy.none.rawValue
 
     @StateObject private var vm: LibraryViewModel
+    @State private var showWiFiTransfer = false
 
     private var tokens: DesignTokens { themeManager.tokens }
 
@@ -66,6 +67,9 @@ struct LibraryView: View {
                     case .downloads: downloadsContent
                     }
                 }
+            }
+            .navigationDestination(isPresented: $showWiFiTransfer) {
+                WiFiTransferView()
             }
             .ariaNavigationBar()
             .navigationTitle("Library")
@@ -122,6 +126,12 @@ struct LibraryView: View {
                             beginImport(.m3u)
                         } label: {
                             Label("Import M3U Playlist…", systemImage: "list.bullet.rectangle")
+                        }
+                        Divider()
+                        Button {
+                            showWiFiTransfer = true
+                        } label: {
+                            Label("Wi-Fi Transfer…", systemImage: "wifi")
                         }
                     } label: {
                         Image(systemName: "plus")

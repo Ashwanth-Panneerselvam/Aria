@@ -20,6 +20,7 @@ struct FullScreenPlayerView: View {
     @EnvironmentObject private var settingsManager: SettingsManager
     @EnvironmentObject private var eqController: EQController
     @EnvironmentObject private var nav: NavigationCoordinator
+    @EnvironmentObject private var analysisManager: LibraryAnalysisManager
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -27,6 +28,9 @@ struct FullScreenPlayerView: View {
     var onDismiss: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    /// Brief confirmation after Library Radio fills the queue.
+    @State private var radioToast: String?
+    @State private var radioNeedsAnalysis: Int?
 
     private let dragThreshold: CGFloat = 120
     private let sidePadding: CGFloat = DS.Spacing.xl
@@ -57,6 +61,37 @@ struct FullScreenPlayerView: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .overlay(alignment: .top) {
+            if let radioToast {
+                Text(radioToast)
+                    .font(DS.Typography.captionStrong)
+                    .foregroundColor(tokens.textPrimary)
+                    .padding(.horizontal, DS.Spacing.lg)
+                    .padding(.vertical, DS.Spacing.sm)
+                    .background(Capsule().fill(tokens.elevatedSurface))
+                    .overlay(Capsule().stroke(tokens.hairline, lineWidth: 0.5))
+                    .padding(.top, 56)
+                    .transition(.opacity)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+        }
+        .alert("Analyse your library first",
+               isPresented: Binding(get: { radioNeedsAnalysis != nil },
+                                    set: { if !$0 { radioNeedsAnalysis = nil } })) {
+            Button("Analyse Now") {
+                analysisManager.analyzeLibrary()
+                radioNeedsAnalysis = nil
+            }
+            Button("Not Now", role: .cancel) { radioNeedsAnalysis = nil }
+        } message: {
+            Text("Library Radio matches tracks by tempo, energy and sound. \(radioNeedsAnalysis ?? 0) tracks still need a one-time analysis. It runs on the phone and you can keep listening.")
+        }
+        .task(id: playerManager.currentTrack?.id) {
+            // One-time analysis of the playing file for the waveform bar.
+            if settingsManager.showWaveformSeekBar, let track = playerManager.currentTrack, track.isLocal {
+                analysisManager.ensureAnalyzed(track)
+            }
         }
         .offset(y: dragOffset)
         .sheet(item: $nav.presentedSheet) { sheet in
@@ -116,6 +151,9 @@ struct FullScreenPlayerView: View {
             PlayerScrubber(
                 tokens: tokens,
                 isBuffering: playerManager.isRebuffering || playerManager.playbackState == .loading,
+                waveform: settingsManager.showWaveformSeekBar
+                    ? analysisManager.analysis(for: track)?.waveformLevels
+                    : nil,
                 onSeek: { playerManager.seek(to: $0) }
             )
             .frame(width: contentWidth)
@@ -373,6 +411,16 @@ struct FullScreenPlayerView: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
 
+            if track.isLocal {
+                secondaryButton(label: "Library Radio",
+                                value: "Queues similar tracks from your library") {
+                    startLibraryRadio(seed: track)
+                } content: {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundColor(tokens.textSecondary)
+                }
+            }
+
             secondaryButton(label: "Add to playlist") {
                 nav.presentedSheet = .addToPlaylist
             } content: {
@@ -460,6 +508,32 @@ struct FullScreenPlayerView: View {
         let speed = speedLabel(playerManager.playbackRate)
         guard playerManager.playbackPitch != PlaybackTuning.defaultPitch else { return speed }
         return speed + ", pitch " + String(format: "%+.1f", playerManager.playbackPitch) + " semitones"
+    }
+
+    // MARK: - Library radio
+
+    /// Replaces "up next" with an offline mix that flows from this track.
+    private func startLibraryRadio(seed: Track) {
+        switch analysisManager.libraryRadio(seed: seed) {
+        case .tracks(let tracks):
+            guard !tracks.isEmpty else { return }
+            Haptics.success()
+            playerManager.clearQueue()
+            for t in tracks { playerManager.addToQueue(t) }
+            showRadioToast("Library Radio · \(tracks.count) tracks up next")
+        case .needsAnalysis(let pending):
+            radioNeedsAnalysis = max(pending, 1)
+        case .unavailable:
+            showRadioToast("Library Radio works with tracks on this iPhone")
+        }
+    }
+
+    private func showRadioToast(_ text: String) {
+        if reduceMotion { radioToast = text } else { withAnimation { radioToast = text } }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if reduceMotion { radioToast = nil } else { withAnimation { radioToast = nil } }
+        }
     }
 
     // MARK: - Empty state

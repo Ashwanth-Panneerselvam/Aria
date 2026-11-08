@@ -43,6 +43,9 @@ final class AVPlayerPath {
     /// nil until either is first needed for an item.
     private var eqTap: AudioEQTap?
 
+    /// Post-EQ processing (crossfeed / personal tuning) for every item.
+    private(set) var dapConfig: DAPConfig = .off
+
     init(player: PlayerManager) {
         self.player = player
     }
@@ -199,7 +202,7 @@ final class AVPlayerPath {
         // Fresh item → fresh tap. Attach now if anything needs it, otherwise
         // this item plays with no tap in its path at all.
         eqTap = nil
-        if player.eq.isEnabled || playbackPitch != 0 {
+        if player.eq.isEnabled || playbackPitch != 0 || dapConfig.isActive {
             attachTap(eqBypassed: !player.eq.isEnabled)
         }
 
@@ -227,6 +230,17 @@ final class AVPlayerPath {
         }
     }
 
+    /// Applies crossfeed / tuning live. Attaches the tap to the current item
+    /// if nothing else had needed it yet.
+    func updateDAP(_ config: DAPConfig) {
+        dapConfig = config
+        if let tap = eqTap {
+            tap.setDAP(config)
+        } else if config.isActive, playerItem != nil, let eq = player?.eq {
+            attachTap(eqBypassed: !eq.isEnabled)
+        }
+    }
+
     func updateEQBands(_ bands: [Float]) {
         eqTap?.setBands(bands)
     }
@@ -249,7 +263,7 @@ final class AVPlayerPath {
         guard let item = playerItem, let eq = player?.eq else { return }
         let tap = AudioEQTap(frequencies: PlayerManager.eqFrequencies, bands: eq.bands,
                              bypassed: eqBypassed, parametric: eq.parametric,
-                             pitchSemitones: playbackPitch)
+                             pitchSemitones: playbackPitch, dapConfig: dapConfig)
         eqTap = tap
         let asset = item.asset
         Task { @MainActor [weak self] in

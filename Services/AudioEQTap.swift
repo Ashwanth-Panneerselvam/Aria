@@ -13,6 +13,8 @@ import MediaToolbox
 final class AudioEQTap {
     private let eq = AudioEQ()
     private let pitchShifter = AudioPitchShifter()
+    /// Post-EQ stage: personal tuning, hearing profile, crossfeed.
+    private let dap = DAPProcessor()
     private let frequencies: [Float]
     private let initialBands: [Float]
     private let initialParametric: ParametricEQPreset?
@@ -36,7 +38,9 @@ final class AudioEQTap {
     private var sourceBytesPerFrame = 0
 
     init(frequencies: [Float], bands: [Float], bypassed: Bool,
-         parametric: ParametricEQPreset? = nil, pitchSemitones: Float = 0) {
+         parametric: ParametricEQPreset? = nil, pitchSemitones: Float = 0,
+         dapConfig: DAPConfig = .off) {
+        dap.update(dapConfig)
         self.pitchSemitones = pitchSemitones
         self.frequencies = frequencies
         self.initialBands = bands
@@ -58,6 +62,9 @@ final class AudioEQTap {
         bypassed = b
         eq.setBypass(b)
     }
+
+    /// Live update of the post-EQ stage (UI thread).
+    func setDAP(_ config: DAPConfig) { dap.update(config) }
 
     func setPitch(semitones: Float) {
         // Re-engaging: drop what the unit held when it was last in use, or that
@@ -108,6 +115,7 @@ final class AudioEQTap {
         try? eq.prepare(format: format, frequencies: frequencies,
                         maximumFrames: AVAudioFrameCount(clamping: maximumFrames))
         sourceBytesPerFrame = Int(format.mBytesPerFrame)
+        dap.prepare(format: format)
         try? pitchShifter.prepare(format: format,
                                   maximumFrames: max(AVAudioFrameCount(clamping: maximumFrames),
                                                      AudioEQ.minimumFramesPerSlice))
@@ -143,14 +151,16 @@ final class AudioEQTap {
                 tap, frames, bufferList, flagsOut, nil, framesOut)
             guard status == noErr else { return }
         }
-        if bypassed { return }  // passthrough — leave the audio as-is
-
-        var ts = AudioTimeStamp()
-        ts.mSampleTime = renderSampleTime
-        ts.mFlags = .sampleTimeValid
-        _ = eq.process(source: bufferList, output: bufferList,
-                       frames: AVAudioFrameCount(framesOut.pointee), timeStamp: ts)
-        renderSampleTime += Float64(framesOut.pointee)
+        if !bypassed {
+            var ts = AudioTimeStamp()
+            ts.mSampleTime = renderSampleTime
+            ts.mFlags = .sampleTimeValid
+            _ = eq.process(source: bufferList, output: bufferList,
+                           frames: AVAudioFrameCount(framesOut.pointee), timeStamp: ts)
+            renderSampleTime += Float64(framesOut.pointee)
+        }
+        // Runs whether or not the EQ is on; a no-op when nothing is enabled.
+        dap.process(bufferList, frames: Int(framesOut.pointee))
     }
 
     private func renderShifted(tap: MTAudioProcessingTap,

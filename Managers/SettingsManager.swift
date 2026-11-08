@@ -40,6 +40,8 @@ final class SettingsManager: ObservableObject {
     /// Show the source-format strip (codec · bit depth · sample rate · EQ) at
     /// the bottom of the full-screen player.
     @Published var showAudioInfoStrip: Bool = true
+    /// Draw the seek bar as the track's loudness waveform (needs analysis).
+    @Published var showWaveformSeekBar: Bool = true
     @Published var selectedThemeID: String = "blue"
     @Published var sleepTimer: SleepTimerDuration = .off
     @Published private(set) var searchHistory: [String] = []
@@ -91,6 +93,7 @@ final class SettingsManager: ObservableObject {
     var isDarkMode: Bool { appearanceMode.isDark }
 
     static let showAudioInfoStripKey = "show_audio_info_strip"
+    static let showWaveformSeekBarKey = "show_waveform_seek_bar"
 
     private let maxHistoryItems = 20
     private let defaults = UserDefaults.standard
@@ -128,6 +131,7 @@ final class SettingsManager: ObservableObject {
             legacyIsDark: defaults.object(forKey: AppearanceMode.legacyDarkModeKey) as? Bool
         )
         showAudioInfoStrip = defaults.object(forKey: Self.showAudioInfoStripKey) as? Bool ?? true
+        showWaveformSeekBar = defaults.object(forKey: Self.showWaveformSeekBarKey) as? Bool ?? true
         selectedThemeID = defaults.string(forKey: "theme_id") ?? "blue"
         // The sleep timer is intentionally NOT restored. It's ephemeral —
         // nothing re-arms it at launch, so restoring a stale "30 min"
@@ -151,6 +155,7 @@ final class SettingsManager: ObservableObject {
         // lands on Dark (for Dark or True Black) rather than its default.
         defaults.set(appearanceMode.isDark, forKey: AppearanceMode.legacyDarkModeKey)
         defaults.set(showAudioInfoStrip, forKey: Self.showAudioInfoStripKey)
+        defaults.set(showWaveformSeekBar, forKey: Self.showWaveformSeekBarKey)
         defaults.set(selectedThemeID, forKey: "theme_id")
         // Sleep timer is ephemeral and deliberately not persisted (see load()).
         defaults.set(searchHistory, forKey: "search_history")
