@@ -590,6 +590,19 @@ struct MoreView: View {
         MoreCard(title: "DAP", tokens: tokens) {
             VStack(spacing: 0) {
                 NavigationLink {
+                    GalaxyView()
+                } label: {
+                    row(icon: "sparkles", iconColor: tokens.accent, title: "Galaxy", isButton: true) {
+                        Text("Your library as a star map")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
                     SoundProcessingView()
                 } label: {
                     row(icon: "slider.vertical.3", iconColor: tokens.accent, title: "Sound",

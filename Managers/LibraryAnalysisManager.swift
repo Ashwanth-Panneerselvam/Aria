@@ -113,6 +113,102 @@ final class LibraryAnalysisManager: ObservableObject {
         return .tracks(tracks)
     }
 
+    // MARK: - Galaxy
+
+    /// One track on the Galaxy map.
+    struct GalaxyStar: Identifiable, Equatable {
+        let id: UUID
+        /// −1…1 on both axes.
+        let position: SIMD2<Double>
+        /// 0 = dark/bassy … 1 = bright (spectral centroid, library-relative).
+        let brightness: Double
+        /// 0 = quiet … 1 = loud (integrated loudness, library-relative).
+        let energy: Double
+        let title: String
+        let artist: String
+    }
+
+    @Published private(set) var galaxy: [GalaxyStar] = []
+    @Published private(set) var isBuildingGalaxy = false
+    private var galaxyKey: Int?
+    private var galaxyTask: Task<Void, Never>?
+
+    /// Analysed, present tracks — the Galaxy's population.
+    var galaxyEligibleCount: Int {
+        library?.tracks.filter { !$0.isMissing && results[$0.id] != nil }.count ?? 0
+    }
+
+    /// Recomputes the map when the set of analysed tracks changed since the
+    /// last build. Runs detached; a few seconds for ~500 tracks on an A12.
+    func buildGalaxyIfNeeded() {
+        guard let library else { return }
+        let entries: [(id: UUID, title: String, artist: String, analysis: TrackAnalysis)] =
+            library.tracks.compactMap { t in
+                guard !t.isMissing, let a = results[t.id] else { return nil }
+                return (id: t.id, title: t.title, artist: t.artist ?? "Unknown Artist", analysis: a)
+            }
+        var hasher = Hasher()
+        for e in entries {
+            hasher.combine(e.id)
+            hasher.combine(e.analysis.version)
+            hasher.combine(e.analysis.fileSize)
+        }
+        let key = hasher.finalize()
+        guard key != galaxyKey || galaxy.count != entries.count else { return }
+        guard entries.count >= 3 else {
+            galaxy = []
+            galaxyKey = key
+            return
+        }
+
+        galaxyTask?.cancel()
+        isBuildingGalaxy = true
+        let features = entries.map { LibraryRadio.vector($0.analysis) }
+        let centroids = entries.map { log2(max($0.analysis.features.spectralCentroidHz, 100)) }
+        let loudness = entries.map { $0.analysis.integratedLUFS ?? -14 }
+        galaxyTask = Task { [weak self] in
+            let job = Task.detached(priority: .utility) { () -> [SIMD2<Double>] in
+                GalaxyLayout.embed(features, isCancelled: { Task.isCancelled })
+            }
+            let positions = await withTaskCancellationHandler {
+                await job.value
+            } onCancel: {
+                job.cancel()
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.isBuildingGalaxy = false
+            guard positions.count == entries.count else { return }
+            let bright = Self.rankNormalized(centroids)
+            let energy = Self.rankNormalized(loudness)
+            self.galaxy = entries.indices.map { i in
+                GalaxyStar(id: entries[i].id, position: positions[i], brightness: bright[i],
+                           energy: energy[i], title: entries[i].title, artist: entries[i].artist)
+            }
+            self.galaxyKey = key
+        }
+    }
+
+    /// Maps values to 0…1 by rank, so a few outliers don't wash out the rest.
+    static func rankNormalized(_ values: [Double]) -> [Double] {
+        guard values.count > 1 else { return values.map { _ in 0.5 } }
+        let order = values.indices.sorted { values[$0] < values[$1] }
+        var out = [Double](repeating: 0, count: values.count)
+        for (rank, index) in order.enumerated() {
+            out[index] = Double(rank) / Double(values.count - 1)
+        }
+        return out
+    }
+
+    /// Player tracks for a set of local IDs, in the given order.
+    func playerTracks(for ids: [UUID]) -> [Track] {
+        guard let library else { return [] }
+        let byID = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { id in
+            guard let t = byID[id], !t.isMissing else { return nil }
+            return t.asPlayerTrack(fileURL: library.fileURL(for: t))
+        }
+    }
+
     // MARK: - Single track (player waveform)
 
     /// Analyses the playing track if it has no result yet. Cheap to call

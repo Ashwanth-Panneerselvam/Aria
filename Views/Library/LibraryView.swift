@@ -91,6 +91,14 @@ struct LibraryView: View {
                     .disabled(activeTabIsEmpty)
                     .accessibilityLabel("Play all")
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        GalaxyView()
+                    } label: {
+                        Image(systemName: "sparkles")
+                    }
+                    .accessibilityLabel("Galaxy")
+                }
                 if selectedTab == .offlineTracks {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
