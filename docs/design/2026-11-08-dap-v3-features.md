@@ -96,3 +96,45 @@ depth, 120 BPM click track), `LibraryRadioAndTransferTests`.
   Always black. Entry: Library toolbar ✦ and More → DAP → Galaxy.
 - Tests: `GalaxyLayoutTests` (range, cluster preservation, determinism,
   tiny and degenerate inputs).
+
+## Pet
+
+- `PetStore` (UserDefaults `pet_v1`): listening days → stage (baby < 3 days,
+  kid < 10, grown); per-session play counts → mood (sleeping when paused,
+  excited for 8 s on a track's first play this session, bored from the 3rd
+  play, otherwise dancing). Fed from `ContentView` on track change.
+- `PetView`: 14×12 pixel sprite on a `Canvas` inside `TimelineView`
+  (12 fps while playing, 2 fps asleep, paused under Reduce Motion). Bob
+  rate = analysed tempo folded into 70–150 BPM (tempo-matched, not
+  beat-phase-locked). Tap for a thought bubble. Toggle: More → DAP → Pet.
+
+## ABX challenge
+
+- `ABXClipMaker`: 15 s excerpt (44.1/48 kHz sources only) → 10 ms edge fades
+  → AAC via `AVAudioFile` at 128/192/256/320 kbps → decode → cross-
+  correlation alignment (±4096 samples) → RMS level match. `ABXStats` gives
+  the one-sided binomial p-value.
+- `ABXSession`: own `AVAudioEngine`/`AVAudioPlayerNode` (no EQ on either
+  version); switching keeps the playhead (slice + looping buffer). 16
+  trials, new random X each. Verdict at p < 0.01 / < 0.05.
+- Entry: More → DAP → ABX Challenge.
+
+## Dial mode
+
+Original retro design (not a replica of any product): black body, amber /
+green / ice dot-matrix screen, knurled dial, four keys.
+
+- `DialNavigator`: stack of menu / now playing / message screens; inputs
+  rotate(±n) (returns false at list ends), select, back, play/pause,
+  next/previous. Now Playing: wheel seeks ±5 s per detent, centre = play/pause.
+- `DialController`: menu tree — Now Playing, Artists → albums → songs,
+  Albums, Songs, Playlists, Favourites, Shuffle All, Library Radio, Display
+  (screen colour, click sound), Exit. Album order by file name.
+- `RotaryWheel`: drag around the ring (even-odd hit area), 15° per detent
+  → `UISelectionFeedbackGenerator` tick; one heavy bump at a list end;
+  rigid impact on centre and keys; optional system click sound. Knurling
+  rotates with the finger. VoiceOver: adjustable action + default action.
+- `Dither`: Atkinson 1-bit dithering of the artwork at 40×40.
+- Entry: More → DAP → Dial Mode (full-screen cover).
+
+Tests: `PetABXDialTests`.
