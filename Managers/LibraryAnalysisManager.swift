@@ -152,6 +152,8 @@ final class LibraryAnalysisManager: ObservableObject {
             hasher.combine(e.id)
             hasher.combine(e.analysis.version)
             hasher.combine(e.analysis.fileSize)
+            hasher.combine(e.title)
+            hasher.combine(e.artist)
         }
         let key = hasher.finalize()
         guard key != galaxyKey || galaxy.count != entries.count else { return }

@@ -144,3 +144,27 @@ green / ice dot-matrix screen, knurled dial, four keys.
   "Standard Interface" menu item. Restored on launch.
 
 Tests: `PetABXDialTests`.
+
+## Tag reading fix (FLAC)
+
+AVFoundation's `commonMetadata` doesn't expose FLAC Vorbis comments, so FLAC
+imports stored the file name as title, "This Device" as artist and no album.
+
+- `Services/AudioTags.swift` parses METADATA_BLOCK_VORBIS_COMMENT directly
+  (ID3v2-prefixed files supported; other blocks such as PICTURE are skipped
+  by seeking). Keys are case-insensitive; multiple ARTIST values are joined;
+  ALBUMARTIST is the artist fallback; TRACKNUMBER/DISCNUMBER "n/m" → n.
+  Non-FLAC files fall back to AVFoundation's per-format metadata.
+- Import: tags fill anything common metadata missed.
+- `LocalLibraryManager.repairTagsFromFiles()`: for tracks with a placeholder
+  artist or no album, fills only those fields (and the title when the
+  artist was a placeholder, i.e. tags were never read). Ids, file names,
+  artwork, dates and sizes unchanged. Writes
+  `Documents/AriaLibrary-before-tag-repair.json` once before the first change.
+- `LibraryTagRepair` runs it once at launch (`library_tag_repair_v1`) and on
+  demand (Library Audit → Tags → Re-read from files), then refreshes the
+  track copies stored in playlists and favourites.
+- Dial: albums grouped by name (compilations stay whole, detail = artist or
+  "Various"); album tracks ordered by disc/track tags read on demand.
+- Galaxy rebuild key now includes title/artist.
+- Tests: `AudioTagsTests`.
