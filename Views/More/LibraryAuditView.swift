@@ -196,6 +196,13 @@ struct LibraryAuditView: View {
                     .font(DS.Typography.caption)
                     .foregroundColor(tokens.accent)
             }
+            NavigationLink {
+                MetadataDoctorView()
+            } label: {
+                Label("Open Metadata Doctor", systemImage: "stethoscope")
+                    .font(DS.Typography.bodyEm)
+                    .foregroundColor(tokens.accent)
+            }
             Text("Reads artist, album and title from each file's own tags (including FLAC) and fills in only what's missing.")
                 .font(DS.Typography.caption)
                 .foregroundColor(tokens.textSecondary)

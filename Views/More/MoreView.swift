@@ -646,6 +646,19 @@ struct MoreView: View {
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
                 NavigationLink {
+                    MetadataDoctorView()
+                } label: {
+                    row(icon: "stethoscope", iconColor: tokens.accent, title: "Metadata Doctor", isButton: true) {
+                        Text("Fix names, titles, artwork")
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
                     ABXChallengeView()
                 } label: {
                     row(icon: "ear.badge.checkmark", iconColor: tokens.accent, title: "ABX Challenge",

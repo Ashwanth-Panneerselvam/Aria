@@ -564,6 +564,84 @@ final class LocalLibraryManager: ObservableObject {
         return changed
     }
 
+    // MARK: - Metadata edits (Metadata Doctor)
+
+    /// One track's edits; nil fields are left alone.
+    struct MetadataEdit: Equatable {
+        var title: String?
+        var artist: String?
+        var album: String?
+        /// Copy this track's artwork file (the target gets its own copy, so
+        /// removing either track never deletes the other's artwork).
+        var artworkFrom: UUID?
+    }
+
+    /// Applies edits to Aria's library list (the audio files are never
+    /// modified). Ids, file names, dates and sizes are kept. Returns the
+    /// previous versions of the changed tracks, for undo.
+    @discardableResult
+    func applyMetadataEdits(_ edits: [UUID: MetadataEdit]) -> [LocalTrack] {
+        guard !edits.isEmpty else { return [] }
+        let byID = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+        var newArtwork: [UUID: String] = [:]
+        for (id, edit) in edits {
+            guard let sourceID = edit.artworkFrom, let source = byID[sourceID],
+                  let url = artworkURL(for: source),
+                  let data = try? Data(contentsOf: url), !data.isEmpty,
+                  let name = writeArtwork(data: data, trackID: id) else { continue }
+            newArtwork[id] = name
+        }
+
+        func clean(_ s: String?) -> String? {
+            guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+            return t
+        }
+
+        var previous: [LocalTrack] = []
+        let updated = tracks.map { t -> LocalTrack in
+            guard let edit = edits[t.id] else { return t }
+            let title = clean(edit.title) ?? t.title
+            let artist = clean(edit.artist) ?? t.artist
+            let album = clean(edit.album) ?? t.album
+            let artwork = newArtwork[t.id] ?? t.artworkFileName
+            guard title != t.title || artist != t.artist || album != t.album || artwork != t.artworkFileName else {
+                return t
+            }
+            previous.append(t)
+            return LocalTrack(id: t.id, title: title, artist: artist, artworkFileName: artwork,
+                              fileName: t.fileName, importedAt: t.importedAt, fileSizeBytes: t.fileSizeBytes,
+                              durationSeconds: t.durationSeconds, album: album, isMissing: t.isMissing)
+        }
+        guard !previous.isEmpty else { return [] }
+        backUpTrackListOnce(tag: "before-metadata-doctor")
+        tracks = updated
+        save()
+        flushPendingWrites()
+        return previous
+    }
+
+    /// Undo: puts title / artist / album / artwork back from `previous`.
+    /// Returns the ids restored. Artwork copies made by the undone edit are
+    /// left unreferenced and removed by the next orphan cleanup.
+    @discardableResult
+    func restoreMetadata(_ previous: [LocalTrack]) -> Set<UUID> {
+        let old = Dictionary(previous.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var restored = Set<UUID>()
+        let updated = tracks.map { t -> LocalTrack in
+            guard let p = old[t.id] else { return t }
+            restored.insert(t.id)
+            return LocalTrack(id: t.id, title: p.title, artist: p.artist, artworkFileName: p.artworkFileName,
+                              fileName: t.fileName, importedAt: t.importedAt, fileSizeBytes: t.fileSizeBytes,
+                              durationSeconds: t.durationSeconds, album: p.album, isMissing: t.isMissing)
+        }
+        guard !restored.isEmpty else { return [] }
+        tracks = updated
+        save()
+        flushPendingWrites()
+        return restored
+    }
+
     /// Copies the persisted track list next to the library folder (not
     /// inside it — orphan cleanup only keeps UUID-named files there).
     private func backUpTrackListOnce(tag: String) {

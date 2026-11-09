@@ -21,6 +21,15 @@ enum LibraryTagRepair {
                     favorites: FavoritesManager) async -> Int {
         let changed = await library.repairTagsFromFiles()
         guard !changed.isEmpty else { return 0 }
+        propagate(changed, library: library, playlists: playlists, favorites: favorites)
+        return changed.count
+    }
+
+    /// Carries library changes into the track copies kept by playlists and
+    /// favourites.
+    static func propagate(_ changed: Set<UUID>, library: LocalLibraryManager,
+                          playlists: PlaylistsManager, favorites: FavoritesManager) {
+        guard !changed.isEmpty else { return }
         let byID = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let replacement: (Track) -> Track? = { track in
             guard let id = LibraryAnalysisManager.localID(of: track), changed.contains(id),
@@ -29,6 +38,5 @@ enum LibraryTagRepair {
         }
         playlists.refreshTracks(replacement)
         favorites.refreshTracks(replacement)
-        return changed.count
     }
 }
