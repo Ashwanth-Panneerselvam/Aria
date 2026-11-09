@@ -306,9 +306,18 @@ final class LocalLibraryManager: ObservableObject {
         let destURL = libraryDirectory.appendingPathComponent(fileName)
         try AtomicFileWriter.writeAtomically(original, to: destURL)
 
-        let title = (await Self.readTitle(at: destURL, fallback: sourceURL.deletingPathExtension().lastPathComponent))
-        let artist = await Self.readArtist(at: destURL)
-        let album = await Self.readAlbum(at: destURL)
+        let fallbackTitle = sourceURL.deletingPathExtension().lastPathComponent
+        var title = (await Self.readTitle(at: destURL, fallback: fallbackTitle))
+        var artist = await Self.readArtist(at: destURL)
+        var album = await Self.readAlbum(at: destURL)
+        // AVFoundation's common metadata misses FLAC Vorbis comments; read
+        // the file's own tags for anything it couldn't supply.
+        if let tags = await AudioTags.readAny(fileURL: destURL) {
+            let artistMissing = Self.isPlaceholderArtist(artist)
+            if title == fallbackTitle, let t = tags.title { title = t }
+            if artistMissing, let a = tags.displayArtist { artist = a }
+            if album?.isEmpty ?? true, let al = tags.album { album = al }
+        }
         let storedSize = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int64) ?? Int64(original.count)
         let duration = await Self.readDuration(at: destURL)
         var artworkFileName = await extractArtwork(from: destURL, trackID: id)
@@ -492,6 +501,77 @@ final class LocalLibraryManager: ObservableObject {
         removeOrphans(in: libraryDirectory, knownNames: [])
         let artworkDir = libraryDirectory.appendingPathComponent("artwork", isDirectory: true)
         removeOrphans(in: artworkDir, knownNames: liveArtworkFileNames)
+    }
+
+    // MARK: - Tag repair
+
+    static func isPlaceholderArtist(_ artist: String?) -> Bool {
+        guard let artist = artist?.trimmingCharacters(in: .whitespaces) else { return true }
+        return artist.isEmpty || artist == "This Device"
+    }
+
+    /// Fills in artist / album (and title, when the import never read tags)
+    /// from each file's own tags, for tracks imported before Aria could read
+    /// FLAC Vorbis comments. Only fields that are missing or the "This
+    /// Device" placeholder are touched; ids, files, artwork and everything
+    /// else are kept. Saves a backup of the track list first.
+    /// Returns the ids of tracks that changed.
+    @discardableResult
+    func repairTagsFromFiles() async -> Set<UUID> {
+        let candidates = tracks.filter { t in
+            !t.isMissing && (Self.isPlaceholderArtist(t.artist) || (t.album?.isEmpty ?? true))
+        }
+        guard !candidates.isEmpty else { return [] }
+        let jobs = candidates.map { (id: $0.id, url: fileURL(for: $0)) }
+        let found: [UUID: AudioTags] = await Task.detached(priority: .utility) {
+            var out: [UUID: AudioTags] = [:]
+            for job in jobs {
+                if let tags = await AudioTags.readAny(fileURL: job.url) { out[job.id] = tags }
+            }
+            return out
+        }.value
+        guard !found.isEmpty else { return [] }
+
+        var changed = Set<UUID>()
+        let updated = tracks.map { t -> LocalTrack in
+            guard let tags = found[t.id] else { return t }
+            let placeholder = Self.isPlaceholderArtist(t.artist)
+            let newArtist = placeholder ? (tags.displayArtist ?? t.artist) : t.artist
+            let newAlbum = (t.album?.isEmpty ?? true) ? (tags.album ?? t.album) : t.album
+            // A placeholder artist means the import read no tags at all, so
+            // the stored title is just the file name.
+            let newTitle = placeholder ? (tags.title ?? t.title) : t.title
+            guard newArtist != t.artist || newAlbum != t.album || newTitle != t.title else { return t }
+            changed.insert(t.id)
+            return LocalTrack(
+                id: t.id,
+                title: newTitle,
+                artist: newArtist,
+                artworkFileName: t.artworkFileName,
+                fileName: t.fileName,
+                importedAt: t.importedAt,
+                fileSizeBytes: t.fileSizeBytes,
+                durationSeconds: t.durationSeconds,
+                album: newAlbum,
+                isMissing: t.isMissing
+            )
+        }
+        guard !changed.isEmpty else { return [] }
+        backUpTrackListOnce(tag: "before-tag-repair")
+        tracks = updated
+        save()
+        flushPendingWrites()
+        return changed
+    }
+
+    /// Copies the persisted track list next to the library folder (not
+    /// inside it — orphan cleanup only keeps UUID-named files there).
+    private func backUpTrackListOnce(tag: String) {
+        guard let data = store.load() else { return }
+        let backup = libraryDirectory.deletingLastPathComponent()
+            .appendingPathComponent("\(libraryDirectory.lastPathComponent)-\(tag).json")
+        guard !fileManager.fileExists(atPath: backup.path) else { return }
+        try? data.write(to: backup, options: .atomic)
     }
 
     // MARK: - Metadata extraction

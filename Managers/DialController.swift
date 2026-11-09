@@ -100,9 +100,28 @@ final class DialController: ObservableObject {
         }
     }
 
-    /// Album order: file names usually start with the track number.
-    private static func albumOrder(_ a: LocalTrack, _ b: LocalTrack) -> Bool {
-        a.fileName.localizedStandardCompare(b.fileName) == .orderedAscending
+    /// Album order from the files' disc/track tags (read on demand — FLAC
+    /// headers only, a few KB per file), falling back to title.
+    private func albumOrdered(_ tracks: [LocalTrack]) -> [LocalTrack] {
+        guard let library else { return tracks.sorted(by: Self.titleOrder) }
+        let keyed = tracks.map { t -> (LocalTrack, Int, Int) in
+            let tags = AudioTags.read(fileURL: library.fileURL(for: t))
+            return (t, tags?.discNumber ?? 1, tags?.trackNumber ?? Int.max)
+        }
+        return keyed.sorted { a, b in
+            if a.1 != b.1 { return a.1 < b.1 }
+            if a.2 != b.2 { return a.2 < b.2 }
+            return Self.titleOrder(a.0, b.0)
+        }.map(\.0)
+    }
+
+    private static func displayArtist(_ t: LocalTrack) -> String {
+        LocalLibraryManager.isPlaceholderArtist(t.artist) ? "Unknown Artist" : t.artist!
+    }
+
+    private static func albumName(_ t: LocalTrack) -> String? {
+        guard let a = t.album?.trimmingCharacters(in: .whitespaces), !a.isEmpty else { return nil }
+        return a
     }
 
     private static func titleOrder(_ a: LocalTrack, _ b: LocalTrack) -> Bool {
@@ -110,7 +129,7 @@ final class DialController: ObservableObject {
     }
 
     func artistsMenu() -> DialMenu {
-        let groups = Dictionary(grouping: localTracks) { $0.artist?.isEmpty == false ? $0.artist! : "Unknown Artist" }
+        let groups = Dictionary(grouping: localTracks) { Self.displayArtist($0) }
         let names = groups.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         let items = names.map { name -> DialItem in
             let tracks = groups[name] ?? []
@@ -121,7 +140,7 @@ final class DialController: ObservableObject {
     }
 
     private func artistMenu(_ name: String, _ tracks: [LocalTrack]) -> DialMenu {
-        let byAlbum = Dictionary(grouping: tracks) { $0.album?.isEmpty == false ? $0.album! : "Unknown Album" }
+        let byAlbum = Dictionary(grouping: tracks) { Self.albumName($0) ?? "Unknown Album" }
         let albums = byAlbum.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         var items: [DialItem] = [
             DialItem(title: "All Songs", detail: "\(tracks.count)",
@@ -132,11 +151,11 @@ final class DialController: ObservableObject {
                      }),
         ]
         items += albums.map { album in
-            let albumTracks = (byAlbum[album] ?? []).sorted(by: Self.albumOrder)
+            let albumTracks = byAlbum[album] ?? []
             return DialItem(title: album, detail: "\(albumTracks.count)",
                             action: .submenu { [weak self] in
                                 guard let self else { return Self.empty(album) }
-                                let list = self.playerTracks(albumTracks)
+                                let list = self.playerTracks(self.albumOrdered(albumTracks))
                                 return DialMenu(title: album, items: self.trackItems(list) { _ in nil })
                             })
         }
@@ -144,18 +163,25 @@ final class DialController: ObservableObject {
     }
 
     func albumsMenu() -> DialMenu {
-        struct Key: Hashable { let album: String; let artist: String }
-        let groups = Dictionary(grouping: localTracks.filter { $0.album?.isEmpty == false }) {
-            Key(album: $0.album!, artist: $0.artist ?? "")
+        // Grouped by album name (case-insensitive) so compilations with many
+        // artists stay one album; the detail shows the artist or "Various".
+        let groups = Dictionary(grouping: localTracks.filter { Self.albumName($0) != nil }) {
+            Self.albumName($0)!.lowercased()
         }
-        let keys = groups.keys.sorted { $0.album.localizedCaseInsensitiveCompare($1.album) == .orderedAscending }
+        let keys = groups.keys.sorted { a, b in
+            let na = Self.albumName(groups[a]![0])!, nb = Self.albumName(groups[b]![0])!
+            return na.localizedCaseInsensitiveCompare(nb) == .orderedAscending
+        }
         let items = keys.map { key -> DialItem in
-            let tracks = (groups[key] ?? []).sorted(by: Self.albumOrder)
-            return DialItem(title: key.album, detail: key.artist.isEmpty ? nil : key.artist,
+            let tracks = groups[key] ?? []
+            let name = Self.albumName(tracks[0]) ?? key
+            let artists = Set(tracks.map(Self.displayArtist))
+            let detail = artists.count == 1 ? artists.first : "Various"
+            return DialItem(title: name, detail: detail,
                             action: .submenu { [weak self] in
-                                guard let self else { return Self.empty(key.album) }
-                                let list = self.playerTracks(tracks)
-                                return DialMenu(title: key.album, items: self.trackItems(list) { _ in nil })
+                                guard let self else { return Self.empty(name) }
+                                let list = self.playerTracks(self.albumOrdered(tracks))
+                                return DialMenu(title: name, items: self.trackItems(list) { _ in nil })
                             })
         }
         return DialMenu(title: "Albums", items: items.isEmpty ? Self.empty("Albums").items : items)

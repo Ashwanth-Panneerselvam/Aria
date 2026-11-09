@@ -7,6 +7,11 @@ struct LibraryAuditView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var analysisManager: LibraryAnalysisManager
     @EnvironmentObject private var libraryManager: LocalLibraryManager
+    @EnvironmentObject private var playlistsManager: PlaylistsManager
+    @EnvironmentObject private var favoritesManager: FavoritesManager
+
+    @State private var isRepairingTags = false
+    @State private var tagRepairResult: String?
 
     @State private var sort: Sort = .issues
     @State private var selected: Row?
@@ -81,6 +86,7 @@ struct LibraryAuditView: View {
             ScrollView {
                 VStack(spacing: DS.Spacing.lg) {
                     statusCard(analysedCount: all.count)
+                    tagsCard
                     if !all.isEmpty {
                         summaryCard(all)
                         listHeader
@@ -147,6 +153,53 @@ struct LibraryAuditView: View {
                     .font(DS.Typography.caption)
                     .foregroundColor(.orange)
             }
+        }
+        .padding(DS.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous).fill(tokens.cardSurface))
+    }
+
+    private var tagsCard: some View {
+        let untagged = libraryManager.tracks.filter {
+            !$0.isMissing && LocalLibraryManager.isPlaceholderArtist($0.artist)
+        }.count
+        let noAlbum = libraryManager.tracks.filter { !$0.isMissing && ($0.album?.isEmpty ?? true) }.count
+        return VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            HStack {
+                Text("Tags")
+                    .font(DS.Typography.titleMedium)
+                    .foregroundColor(tokens.textPrimary)
+                Spacer()
+                if isRepairingTags {
+                    ProgressView().tint(tokens.textPrimary)
+                } else {
+                    Button("Re-read from files") {
+                        isRepairingTags = true
+                        tagRepairResult = nil
+                        Task {
+                            let n = await LibraryTagRepair.run(library: libraryManager,
+                                                               playlists: playlistsManager,
+                                                               favorites: favoritesManager)
+                            isRepairingTags = false
+                            tagRepairResult = n == 0 ? "Nothing new found in the files." : "Updated \(n) tracks."
+                        }
+                    }
+                    .font(DS.Typography.bodyEm)
+                    .foregroundColor(tokens.accent)
+                }
+            }
+            Text("\(untagged) tracks without an artist · \(noAlbum) without an album")
+                .font(DS.Typography.caption.monospacedDigit())
+                .foregroundColor(tokens.textSecondary)
+            if let tagRepairResult {
+                Text(tagRepairResult)
+                    .font(DS.Typography.caption)
+                    .foregroundColor(tokens.accent)
+            }
+            Text("Reads artist, album and title from each file's own tags (including FLAC) and fills in only what's missing.")
+                .font(DS.Typography.caption)
+                .foregroundColor(tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(DS.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)

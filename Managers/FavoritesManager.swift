@@ -52,6 +52,19 @@ final class FavoritesManager: ObservableObject {
         save()
     }
 
+    /// Replaces stored copies of tracks (e.g. after a library tag repair).
+    func refreshTracks(_ replacement: (Track) -> Track?) {
+        var changed = false
+        let updated = tracks.map { t -> Track in
+            guard let n = replacement(t), n != t else { return t }
+            changed = true
+            return n
+        }
+        guard changed else { return }
+        tracks = updated
+        save()
+    }
+
     func removeAll() {
         tracks.removeAll()
         save()

@@ -143,6 +143,13 @@ struct ContentView: View {
                 settings: settingsManager
             )
             librarySearchManager.appDidBecomeActive()
+            // One-time: fill in artist/album/title from FLAC tags that older
+            // imports couldn't read.
+            Task {
+                await LibraryTagRepair.runIfNeeded(library: localLibraryManager,
+                                                   playlists: playlistsManager,
+                                                   favorites: favoritesManager)
+            }
             if ProcessInfo.processInfo.arguments.contains("--debug-fake-track")
                 || UserDefaults.standard.bool(forKey: "debug_fake_track") {
                 playerManager.loadDebugFakeTrack()

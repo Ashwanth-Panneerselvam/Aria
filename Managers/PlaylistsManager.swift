@@ -90,6 +90,24 @@ final class PlaylistsManager: ObservableObject {
         save()
     }
 
+    /// Replaces stored copies of tracks (e.g. after a library tag repair).
+    /// `replacement` returns nil to keep a track as it is.
+    func refreshTracks(_ replacement: (Track) -> Track?) {
+        var changed = false
+        let updated = playlists.map { playlist -> Playlist in
+            var p = playlist
+            p.tracks = playlist.tracks.map { t in
+                guard let n = replacement(t), n != t else { return t }
+                changed = true
+                return n
+            }
+            return p
+        }
+        guard changed else { return }
+        playlists = updated
+        save()
+    }
+
     func markPlayed(_ playlist: Playlist) {
         guard let idx = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
         playlists[idx].lastPlayedAt = Date()
