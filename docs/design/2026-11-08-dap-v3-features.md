@@ -135,6 +135,12 @@ green / ice dot-matrix screen, knurled dial, four keys.
   rigid impact on centre and keys; optional system click sound. Knurling
   rotates with the finger. VoiceOver: adjustable action + default action.
 - `Dither`: Atkinson 1-bit dithering of the artwork at 40×40.
-- Entry: More → DAP → Dial Mode (full-screen cover).
+- Interface setting, not a modal: `InterfaceMode` (`standard | dial`,
+  UserDefaults `interface_mode`, unknown → standard) on `SettingsManager`.
+  `ContentView` swaps the whole tab UI for `DialModeView` (cross-fade,
+  none under Reduce Motion); lifecycle modifiers sit on the outer body so
+  they run in either interface. Switch: More → Appearance → Interface,
+  More → DAP → Switch to Dial; back via the Dial's STANDARD key or its
+  "Standard Interface" menu item. Restored on launch.
 
 Tests: `PetABXDialTests`.
