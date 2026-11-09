@@ -9,7 +9,6 @@ struct MoreView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
     @EnvironmentObject private var petStore: PetStore
-    @State private var showDialMode = false
 
     @State private var showClearFavoritesAlert = false
     @State private var showDeletePlaylistsAlert = false
@@ -472,6 +471,10 @@ struct MoreView: View {
 
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
+                interfaceRow
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
                 HStack(spacing: DS.Spacing.md) {
                     iconBadge(systemName: "waveform", color: tokens.accent)
                     VStack(alignment: .leading, spacing: 2) {
@@ -593,18 +596,15 @@ struct MoreView: View {
             VStack(spacing: 0) {
                 Button {
                     Haptics.medium()
-                    showDialMode = true
+                    settingsManager.setInterface(.dial)
                 } label: {
-                    row(icon: "dial.min", iconColor: tokens.accent, title: "Dial Mode", isButton: true) {
-                        Text("Retro wheel player")
+                    row(icon: "dial.min", iconColor: tokens.accent, title: "Switch to Dial", isButton: true) {
+                        Text("Retro wheel interface")
                             .font(DS.Typography.caption)
                             .foregroundColor(tokens.textSecondary)
                     }
                 }
                 .buttonStyle(.plain)
-                .fullScreenCover(isPresented: $showDialMode) {
-                    DialModeView()
-                }
 
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
@@ -726,6 +726,42 @@ struct MoreView: View {
         if s.tuningEnabled && !s.isTuningFlat { parts.append("Tuned") }
         if s.applyHearing && s.hearing != nil { parts.append("Hearing") }
         return parts.isEmpty ? "Off" : parts.joined(separator: " · ")
+    }
+
+    // MARK: - Interface
+
+    /// Standard tabs or the Dial player — switches instantly, remembered
+    /// across launches. Playback carries on either way.
+    private var interfaceRow: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            HStack(spacing: DS.Spacing.md) {
+                iconBadge(systemName: "dial.min", color: tokens.accent)
+                Text("Interface")
+                    .font(DS.Typography.body)
+                    .foregroundColor(tokens.textPrimary)
+                Spacer()
+            }
+            Picker("Interface", selection: Binding(
+                get: { settingsManager.interfaceMode },
+                set: { mode in
+                    Haptics.selection()
+                    settingsManager.setInterface(mode)
+                }
+            )) {
+                ForEach(InterfaceMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.leading, 40)
+            Text(settingsManager.interfaceMode.detail + " Switch back from the Dial's STANDARD button or its menu.")
+                .font(DS.Typography.caption)
+                .foregroundColor(tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 40)
+        }
+        .padding(.horizontal, DS.Spacing.md)
+        .padding(.vertical, DS.Spacing.md)
     }
 
     // MARK: - Appearance

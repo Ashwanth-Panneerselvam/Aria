@@ -71,7 +71,7 @@ final class DialController: ObservableObject {
                 DialItem(title: "Shuffle All", action: .perform { [weak self] in self?.shuffleAll() ?? .stay }),
                 DialItem(title: "Library Radio", action: .perform { [weak self] in self?.startRadio() ?? .stay }),
                 DialItem(title: "Display", action: .submenu { [weak self] in self?.displayMenu() ?? Self.empty("Display") }),
-                DialItem(title: "Exit Dial Mode", action: .perform { .exit }),
+                DialItem(title: "Standard Interface", action: .perform { .exit }),
             ]
             return items
         }

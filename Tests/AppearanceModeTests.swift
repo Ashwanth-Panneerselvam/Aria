@@ -13,6 +13,7 @@ final class AppearanceModeTests: XCTestCase {
         AppearanceMode.storageKey,
         AppearanceMode.legacyDarkModeKey,
         SettingsManager.showAudioInfoStripKey,
+        InterfaceMode.storageKey,
         "theme_id",
     ]
     private var saved: [String: Any] = [:]
@@ -93,6 +94,31 @@ final class AppearanceModeTests: XCTestCase {
         settings.showAudioInfoStrip = false
         settings.save()
         XCTAssertFalse(SettingsManager().showAudioInfoStrip)
+    }
+
+    // MARK: - Interface
+
+    func test_interface_defaultsToStandardAndPersists() {
+        XCTAssertEqual(SettingsManager().interfaceMode, .standard)
+        let settings = SettingsManager()
+        settings.setInterface(.dial)
+        XCTAssertEqual(SettingsManager().interfaceMode, .dial)
+        settings.setInterface(.standard)
+        XCTAssertEqual(SettingsManager().interfaceMode, .standard)
+    }
+
+    func test_interface_unknownStoredValueFallsBackToStandard() {
+        UserDefaults.standard.set("cassette", forKey: InterfaceMode.storageKey)
+        XCTAssertEqual(SettingsManager().interfaceMode, .standard)
+    }
+
+    func test_interface_switchKeepsAppearanceAndTheme() {
+        let settings = SettingsManager()
+        settings.setAppearance(.oledBlack)
+        settings.setInterface(.dial)
+        let reloaded = SettingsManager()
+        XCTAssertEqual(reloaded.appearanceMode, .oledBlack)
+        XCTAssertEqual(reloaded.interfaceMode, .dial)
     }
 
     // MARK: - ThemeManager

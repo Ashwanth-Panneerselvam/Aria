@@ -56,59 +56,19 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            themeManager.background
-                .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                tabContent
-                    .frame(maxHeight: .infinity)
-
-                if playerManager.currentTrack != nil {
-                    MiniPlayerView {
-                        setFullPlayer(true)
-                    }
-                }
-
-                customTabBar
-            }
-
-            if showFullPlayer {
-                FullScreenPlayerView(onDismiss: { setFullPlayer(false) })
-                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                .zIndex(100)
+            if settingsManager.interfaceMode == .dial {
+                // The Dial interface replaces the whole tab UI; playback,
+                // queue and every manager carry straight across.
+                DialModeView()
+                    .transition(.opacity)
+                    .zIndex(300)
+            } else {
+                standardInterface
+                    .transition(.opacity)
             }
         }
-        .overlay(alignment: .top) {
-            if let msg = errorBanner {
-                HStack(spacing: DS.Spacing.sm) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(msg)
-                        .scaledFont(size: 13, weight: .medium, relativeTo: .footnote)
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, DS.Spacing.lg)
-                .padding(.vertical, DS.Spacing.md)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(themeManager.isOLED
-                              ? themeManager.tokens.elevatedSurface
-                              : Color.black.opacity(0.85))
-                )
-                .overlay(
-                    // On pure black the banner needs an edge to read as a
-                    // floating element; elsewhere the dark fill already does.
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(themeManager.tokens.chromeBorder, lineWidth: 0.5)
-                )
-                .padding(.horizontal, DS.Spacing.lg)
-                .padding(.top, DS.Spacing.sm)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .zIndex(200)
-            }
-        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: settingsManager.interfaceMode)
+        .overlay(alignment: .top) { errorBannerView }
         .onChange(of: playerManager.playerError) { error in
             let message: String?
             switch error {
@@ -130,7 +90,7 @@ struct ContentView: View {
         // True Black is a dark scheme for every system-owned surface (file
         // pickers, alerts, keyboards, share sheets) — those follow iOS's own
         // dark style rather than a custom imitation.
-        .preferredColorScheme(themeManager.colorScheme)
+        .preferredColorScheme(settingsManager.interfaceMode == .dial ? .dark : themeManager.colorScheme)
         .onChange(of: settingsManager.defaultStartTab) { newValue in
             switch newValue {
             case .playlists: selectedTab = .playlists
@@ -190,6 +150,67 @@ struct ContentView: View {
             }
         }
     }
+
+    /// The tabbed app.
+    private var standardInterface: some View {
+        ZStack {
+            themeManager.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                tabContent
+                    .frame(maxHeight: .infinity)
+
+                if playerManager.currentTrack != nil {
+                    MiniPlayerView {
+                        setFullPlayer(true)
+                    }
+                }
+
+                customTabBar
+            }
+
+            if showFullPlayer {
+                FullScreenPlayerView(onDismiss: { setFullPlayer(false) })
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                .zIndex(100)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var errorBannerView: some View {
+            if let msg = errorBanner {
+                HStack(spacing: DS.Spacing.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(msg)
+                        .scaledFont(size: 13, weight: .medium, relativeTo: .footnote)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, DS.Spacing.lg)
+                .padding(.vertical, DS.Spacing.md)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(themeManager.isOLED
+                              ? themeManager.tokens.elevatedSurface
+                              : Color.black.opacity(0.85))
+                )
+                .overlay(
+                    // On pure black the banner needs an edge to read as a
+                    // floating element; elsewhere the dark fill already does.
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(themeManager.tokens.chromeBorder, lineWidth: 0.5)
+                )
+                .padding(.horizontal, DS.Spacing.lg)
+                .padding(.top, DS.Spacing.sm)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(200)
+            }
+    }
+
 
     // MARK: - Persistence
 

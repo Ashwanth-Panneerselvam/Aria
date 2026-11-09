@@ -8,7 +8,7 @@ import SwiftUI
 /// Centre: select (on Now Playing: play/pause).
 /// Keys: Back · Previous · Play/Pause · Next.
 struct DialModeView: View {
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settingsManager: SettingsManager
     @EnvironmentObject private var playerManager: PlayerManager
     @EnvironmentObject private var libraryManager: LocalLibraryManager
     @EnvironmentObject private var playlistsManager: PlaylistsManager
@@ -18,7 +18,10 @@ struct DialModeView: View {
     @StateObject private var controller = DialController()
 
     var body: some View {
-        DialDevice(navigator: controller.navigator, onExit: { dismiss() })
+        DialDevice(navigator: controller.navigator, onExit: {
+            Haptics.medium()
+            settingsManager.setInterface(.standard)
+        })
             .onAppear {
                 controller.configure(library: libraryManager, playlists: playlistsManager,
                                      favorites: favoritesManager, player: playerManager,
@@ -50,12 +53,18 @@ private struct DialDevice: View {
             VStack(spacing: 0) {
                 HStack {
                     Button(action: onExit) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color(white: 0.45))
-                            .frame(width: 44, height: 44)
+                        Text("STANDARD")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundColor(Color(white: 0.5))
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 28)
+                            .background(Capsule().stroke(Color(white: 0.2), lineWidth: 1))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("Exit dial mode")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Switch to the standard interface")
                     Spacer()
                 }
                 .padding(.horizontal, 8)

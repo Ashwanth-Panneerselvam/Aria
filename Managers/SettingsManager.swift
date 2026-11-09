@@ -44,6 +44,8 @@ final class SettingsManager: ObservableObject {
     @Published var showWaveformSeekBar: Bool = true
     /// The little creature on the Now Playing screen.
     @Published var showPet: Bool = true
+    /// Standard tabs or the Dial player. Restored on launch.
+    @Published var interfaceMode: InterfaceMode = .standard
     @Published var selectedThemeID: String = "blue"
     @Published var sleepTimer: SleepTimerDuration = .off
     @Published private(set) var searchHistory: [String] = []
@@ -136,6 +138,8 @@ final class SettingsManager: ObservableObject {
         showAudioInfoStrip = defaults.object(forKey: Self.showAudioInfoStripKey) as? Bool ?? true
         showWaveformSeekBar = defaults.object(forKey: Self.showWaveformSeekBarKey) as? Bool ?? true
         showPet = defaults.object(forKey: Self.showPetKey) as? Bool ?? true
+        interfaceMode = defaults.string(forKey: InterfaceMode.storageKey)
+            .flatMap(InterfaceMode.init(rawValue:)) ?? .standard
         selectedThemeID = defaults.string(forKey: "theme_id") ?? "blue"
         // The sleep timer is intentionally NOT restored. It's ephemeral —
         // nothing re-arms it at launch, so restoring a stale "30 min"
@@ -161,6 +165,7 @@ final class SettingsManager: ObservableObject {
         defaults.set(showAudioInfoStrip, forKey: Self.showAudioInfoStripKey)
         defaults.set(showWaveformSeekBar, forKey: Self.showWaveformSeekBarKey)
         defaults.set(showPet, forKey: Self.showPetKey)
+        defaults.set(interfaceMode.rawValue, forKey: InterfaceMode.storageKey)
         defaults.set(selectedThemeID, forKey: "theme_id")
         // Sleep timer is ephemeral and deliberately not persisted (see load()).
         defaults.set(searchHistory, forKey: "search_history")
@@ -181,6 +186,12 @@ final class SettingsManager: ObservableObject {
 
     func setTheme(_ id: String) {
         selectedThemeID = id
+        save()
+    }
+
+    func setInterface(_ mode: InterfaceMode) {
+        guard mode != interfaceMode else { return }
+        interfaceMode = mode
         save()
     }
 
