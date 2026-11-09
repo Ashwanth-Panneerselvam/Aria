@@ -168,3 +168,29 @@ imports stored the file name as title, "This Device" as artist and no album.
   "Various"); album tracks ordered by disc/track tags read on demand.
 - Galaxy rebuild key now includes title/artist.
 - Tests: `AudioTagsTests`.
+
+## Metadata Doctor
+
+Edits Aria's library list only — never the audio files.
+
+- `Services/MetadataDoctor.swift` (pure): name key = case/diacritic/width
+  folded, "&"→"and", leading "The " dropped, non-alphanumerics removed.
+  Variant groups = >1 spelling per key; suggestion = most tracks, ties to
+  the more styled spelling. Title tidy: underscores (only when no spaces),
+  leading track numbers ("01 - ", "03.", "7)"; a dash needs a following
+  space so "2-Step" survives; "." must precede a letter so "3.14" survives),
+  bracketed junk ("Official Audio", "Lyrics", "HD", …), spacing. Artwork:
+  tracks without a cover whose album key has a covered track (same artist
+  preferred). Split from title: "Title – Artist – Album" / "Artist –
+  Title" / "Title – Artist" on " - ", " – ", " — " (spaces required);
+  likely pattern pre-selected.
+- `LocalLibraryManager.applyMetadataEdits` / `restoreMetadata`: only title,
+  artist, album, artwork change; artwork is copied to the target's own file.
+  Backup `Documents/AriaLibrary-before-metadata-doctor.json` once.
+- `MetadataDoctorModel`: scan, apply, undo of the last batch (UserDefaults
+  `metadata_doctor_undo_v1`), propagation to playlists/favourites via
+  `LibraryTagRepair.propagate`.
+- `Views/More/MetadataDoctorView.swift`: overview, preview screens with
+  per-item ticks, Undo card, "still missing" counts with Re-read tags and
+  Split from titles. Entry: More → DAP, and Library Audit → Tags.
+- Tests: `MetadataDoctorTests`.
