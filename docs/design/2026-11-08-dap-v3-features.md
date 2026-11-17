@@ -222,7 +222,12 @@ the gain glides in (~0.4 s time constant) when the result lands. The next
 two queued tracks are measured 10 s after a track starts. "Measure the
 whole library now" runs the existing library analysis.
 
-**Targets.** Loud −14, Normal −16 (default), Quiet −18 LUFS.
+**Level slider.** The target loudness is a slider from −24 to −10 LUFS
+in 0.5 dB steps (default −16), with Quiet −18 / Normal −16 / Loud −14 as
+one-tap chips. It moves every track together — leveling stays automatic —
+and gives finer, Aria-only control than the iPhone's 16 volume steps, which
+helps with sensitive IEMs. Changes glide in live. Settings saved by the
+first version (`level`) are read as the matching target.
 
 **Peaks.** Default: full boost, and a stereo-linked peak limiter at full
 scale (instant attack, ~60 ms release, no lookahead) catches only samples

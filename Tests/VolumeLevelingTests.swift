@@ -24,7 +24,7 @@ final class VolumeLevelingTests: XCTestCase {
         let s = VolumeLevelingSettings()
         for lufs in [-6.5, -9.0, -14.2, -20.0] {
             let d = VolumeLeveling.decide(reading(lufs, peak: -12), settings: s)
-            XCTAssertEqual(lufs + d.gainDB, s.level.targetLUFS, accuracy: 0.01)
+            XCTAssertEqual(lufs + d.gainDB, s.targetLUFS, accuracy: 0.01)
         }
     }
 
@@ -62,10 +62,31 @@ final class VolumeLevelingTests: XCTestCase {
 
     func test_levels() {
         var s = VolumeLevelingSettings()
-        s.level = .loud
+        s.targetLUFS = VolumeLevelingSettings.Level.loud.targetLUFS
         XCTAssertEqual(VolumeLeveling.decide(reading(-10), settings: s).gainDB, -4, accuracy: 0.001)
-        s.level = .quiet
-        XCTAssertEqual(VolumeLeveling.decide(reading(-10), settings: s).gainDB, -8, accuracy: 0.001)
+        s.targetLUFS = -21.5
+        XCTAssertEqual(VolumeLeveling.decide(reading(-10), settings: s).gainDB, -11.5, accuracy: 0.001)
+    }
+
+    func test_target_snapsToStepAndRange() {
+        var s = VolumeLevelingSettings()
+        s.targetLUFS = -15.3
+        XCTAssertEqual(s.targetLUFS, -15.5)
+        s.targetLUFS = -40
+        XCTAssertEqual(s.targetLUFS, VolumeLevelingSettings.targetRange.lowerBound)
+        s.targetLUFS = 0
+        XCTAssertEqual(s.targetLUFS, VolumeLevelingSettings.targetRange.upperBound)
+        XCTAssertNil(s.preset)
+        s.targetLUFS = -18
+        XCTAssertEqual(s.preset, .quiet)
+    }
+
+    func test_oldSavedPreset_migratesToTarget() throws {
+        let old = #"{"enabled":true,"mode":"album","level":"loud","cleanBoostsOnly":true}"#
+        let s = try JSONDecoder().decode(VolumeLevelingSettings.self, from: Data(old.utf8))
+        XCTAssertEqual(s.targetLUFS, -14)
+        XCTAssertEqual(s.mode, .album)
+        XCTAssertTrue(s.cleanBoostsOnly)
     }
 
     // MARK: - ReplayGain and album
@@ -111,7 +132,7 @@ final class VolumeLevelingTests: XCTestCase {
         let s = VolumeLevelingSettings()
         XCTAssertTrue(s.enabled)
         XCTAssertEqual(s.mode, .track)
-        XCTAssertEqual(s.level.targetLUFS, -16)
+        XCTAssertEqual(s.targetLUFS, -16)
         XCTAssertFalse(s.cleanBoostsOnly)
     }
 
@@ -119,10 +140,10 @@ final class VolumeLevelingTests: XCTestCase {
         let suite = UserDefaults(suiteName: "VolumeLevelingTests-\(UUID().uuidString)")!
         let manager = VolumeLevelingManager(defaults: suite)
         manager.settings.mode = .album
-        manager.settings.level = .quiet
+        manager.settings.targetLUFS = -19.5
         let reloaded = VolumeLevelingManager(defaults: suite)
         XCTAssertEqual(reloaded.settings.mode, .album)
-        XCTAssertEqual(reloaded.settings.level, .quiet)
+        XCTAssertEqual(reloaded.settings.targetLUFS, -19.5)
     }
 
     func test_offConfig_isInactive() {

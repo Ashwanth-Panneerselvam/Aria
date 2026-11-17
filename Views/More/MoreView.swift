@@ -750,7 +750,8 @@ struct MoreView: View {
     private var levelingSummary: String {
         let s = volumeLevelingManager.settings
         guard s.enabled else { return "Off" }
-        return "\(s.mode.displayName) · \(s.level.displayName)"
+        let level = s.preset?.displayName ?? VolumeLevelingView.formatTarget(s.targetLUFS)
+        return "\(s.mode.displayName) · \(level)"
     }
 
     private var soundSummary: String {

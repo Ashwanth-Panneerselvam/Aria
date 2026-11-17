@@ -28,8 +28,10 @@ nonisolated struct VolumeLevelingSettings: Codable, Equatable {
         }
     }
 
+    /// Named reference points on the level slider (and the settings an
+    /// earlier version stored).
     enum Level: String, Codable, CaseIterable, Identifiable {
-        case loud, normal, quiet
+        case quiet, normal, loud
         var id: String { rawValue }
 
         /// Target integrated loudness, LUFS.
@@ -50,13 +52,72 @@ nonisolated struct VolumeLevelingSettings: Codable, Equatable {
         }
     }
 
+    /// Slider range for the target loudness, LUFS, and its step.
+    static let targetRange: ClosedRange<Double> = -24 ... -10
+    static let targetStep = 0.5
+
     var enabled = true
     var mode: Mode = .track
-    var level: Level = .normal
+    /// The loudness every track (or album) is brought to, LUFS. Set with a
+    /// slider; Loud/Normal/Quiet are marked on it.
+    var targetLUFS: Double = Level.normal.targetLUFS {
+        didSet {
+            let clamped = Self.snap(targetLUFS)
+            if clamped != targetLUFS { targetLUFS = clamped }
+        }
+    }
     /// When true, quiet tracks are only raised as far as their peaks allow,
     /// so nothing is ever limited — at the cost of a few very dynamic tracks
     /// (classical, old jazz) staying a little quieter than the rest.
     var cleanBoostsOnly = false
+
+    init(enabled: Bool = true, mode: Mode = .track,
+         targetLUFS: Double = Level.normal.targetLUFS, cleanBoostsOnly: Bool = false) {
+        self.enabled = enabled
+        self.mode = mode
+        self.targetLUFS = Self.snap(targetLUFS)
+        self.cleanBoostsOnly = cleanBoostsOnly
+    }
+
+    /// The named level the target sits on, if any.
+    var preset: Level? {
+        Level.allCases.first { abs($0.targetLUFS - targetLUFS) < 0.01 }
+    }
+
+    /// Clamps to the slider range and rounds to its step.
+    static func snap(_ value: Double) -> Double {
+        guard value.isFinite else { return Level.normal.targetLUFS }
+        let clamped = min(targetRange.upperBound, max(targetRange.lowerBound, value))
+        return (clamped / targetStep).rounded() * targetStep
+    }
+
+    // MARK: Codable — reads settings saved before the slider (`level`).
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, mode, targetLUFS, level, cleanBoostsOnly
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        mode = (try? c.decodeIfPresent(Mode.self, forKey: .mode)) ?? .track
+        cleanBoostsOnly = try c.decodeIfPresent(Bool.self, forKey: .cleanBoostsOnly) ?? false
+        if let target = try? c.decodeIfPresent(Double.self, forKey: .targetLUFS) {
+            targetLUFS = Self.snap(target)
+        } else if let level = try? c.decodeIfPresent(Level.self, forKey: .level) {
+            targetLUFS = level.targetLUFS
+        } else {
+            targetLUFS = Level.normal.targetLUFS
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(mode, forKey: .mode)
+        try c.encode(targetLUFS, forKey: .targetLUFS)
+        try c.encode(cleanBoostsOnly, forKey: .cleanBoostsOnly)
+    }
 }
 
 /// Where a track's loudness figure came from.
@@ -143,7 +204,7 @@ nonisolated enum VolumeLeveling {
     /// The gain for a track with this loudness under these settings.
     static func decide(_ reading: LoudnessReading?, settings: VolumeLevelingSettings) -> LevelingDecision {
         guard let reading, reading.lufs.isFinite else { return .unknown }
-        let wanted = settings.level.targetLUFS - reading.lufs
+        let wanted = settings.targetLUFS - reading.lufs
         var gain = min(maxBoostDB, max(maxCutDB, wanted))
         var limitedByPeaks = false
         var limiterMayAct = false

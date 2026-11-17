@@ -95,21 +95,7 @@ struct VolumeLevelingView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: DS.Spacing.sm) {
-                Text("Level")
-                    .font(DS.Typography.body)
-                    .foregroundColor(tokens.textPrimary)
-                Picker("Level", selection: $leveling.settings.level) {
-                    ForEach(VolumeLevelingSettings.Level.allCases) { level in
-                        Text(level.displayName).tag(level)
-                    }
-                }
-                .pickerStyle(.segmented)
-                Text(levelDescription)
-                    .font(DS.Typography.caption)
-                    .foregroundColor(tokens.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            levelControl
 
             Toggle("Never limit peaks", isOn: $leveling.settings.cleanBoostsOnly)
                 .tint(tokens.accent)
@@ -123,14 +109,102 @@ struct VolumeLevelingView: View {
         }
     }
 
-    private var levelDescription: String {
-        let target = leveling.settings.level.targetLUFS
-        let base = String(format: "Target %.0f LUFS. ", target)
-        switch leveling.settings.level {
-        case .loud: return base + "Similar to most streaming services. Quiet tracks need bigger boosts."
-        case .normal: return base + "A balanced level; most tracks are turned down a little."
-        case .quiet: return base + "The ReplayGain reference. Most headroom; turn your volume up a notch."
+    // MARK: - Level slider
+
+    private var target: Double { leveling.settings.targetLUFS }
+
+    private var levelControl: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Level")
+                    .font(DS.Typography.body)
+                    .foregroundColor(tokens.textPrimary)
+                Spacer()
+                Text(Self.formatTarget(target))
+                    .font(DS.Typography.bodyEm.monospacedDigit())
+                    .foregroundColor(tokens.accent)
+            }
+
+            HStack(spacing: DS.Spacing.sm) {
+                Image(systemName: "speaker.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(tokens.textSecondary)
+                Slider(value: $leveling.settings.targetLUFS,
+                       in: VolumeLevelingSettings.targetRange,
+                       step: VolumeLevelingSettings.targetStep)
+                    .tint(tokens.accent)
+                    .accessibilityLabel("Level")
+                    .accessibilityValue(Self.spokenTarget(target))
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(tokens.textSecondary)
+            }
+            .onChange(of: leveling.settings.targetLUFS) { _ in Haptics.selection() }
+
+            HStack(spacing: DS.Spacing.sm) {
+                ForEach(VolumeLevelingSettings.Level.allCases) { level in
+                    presetChip(level)
+                }
+            }
+
+            Text(levelDescription)
+                .font(DS.Typography.caption)
+                .foregroundColor(tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func presetChip(_ level: VolumeLevelingSettings.Level) -> some View {
+        let selected = leveling.settings.preset == level
+        return Button {
+            Haptics.light()
+            leveling.settings.targetLUFS = level.targetLUFS
+        } label: {
+            VStack(spacing: 1) {
+                Text(level.displayName)
+                    .font(DS.Typography.caption.weight(.semibold))
+                Text(String(format: "%.0f", level.targetLUFS))
+                    .font(DS.Typography.micro.monospacedDigit())
+                    .opacity(0.8)
+            }
+            .foregroundColor(selected ? tokens.background : tokens.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(selected ? tokens.accent : tokens.elevatedSurface))
+            .overlay(Capsule().stroke(selected ? Color.clear : tokens.hairline, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(level.displayName), \(Int(level.targetLUFS)) LUFS")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var levelDescription: String {
+        let vsNormal = target - VolumeLevelingSettings.Level.normal.targetLUFS
+        var text: String
+        if abs(vsNormal) < 0.01 {
+            text = "A balanced level; most tracks are turned down a little."
+        } else {
+            let amount = String(format: "%.1f", abs(vsNormal))
+            text = "\(amount) dB \(vsNormal > 0 ? "louder" : "quieter") than Normal."
+        }
+        if target > -14 {
+            text += leveling.settings.cleanBoostsOnly
+                ? " Above Loud, many quiet tracks can't be raised that far without limiting, so with Never limit peaks on they'll stay a bit quieter."
+                : " Above Loud, many quiet tracks need big boosts, so the limiter will work more."
+        } else if target > -14.01 {
+            text += " Similar to most streaming services."
+        } else if target <= -18 {
+            text += " Lots of headroom: almost nothing needs boosting. Handy if your IEMs are too loud even at the lowest volume step."
+        }
+        return text
+    }
+
+    static func formatTarget(_ lufs: Double) -> String {
+        String(format: "%.1f LUFS", lufs)
+    }
+
+    static func spokenTarget(_ lufs: Double) -> String {
+        String(format: "minus %.1f LUFS", -lufs)
     }
 
     private var coverageCard: some View {
