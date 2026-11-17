@@ -39,8 +39,9 @@ final class AudioEQTap {
 
     init(frequencies: [Float], bands: [Float], bypassed: Bool,
          parametric: ParametricEQPreset? = nil, pitchSemitones: Float = 0,
-         dapConfig: DAPConfig = .off) {
+         dapConfig: DAPConfig = .off, leveling: LevelingConfig = .off) {
         dap.update(dapConfig)
+        dap.updateLeveling(leveling)
         self.pitchSemitones = pitchSemitones
         self.frequencies = frequencies
         self.initialBands = bands
@@ -65,6 +66,9 @@ final class AudioEQTap {
 
     /// Live update of the post-EQ stage (UI thread).
     func setDAP(_ config: DAPConfig) { dap.update(config) }
+
+    /// Live update of this item's volume-leveling gain (UI thread).
+    func setLeveling(_ config: LevelingConfig) { dap.updateLeveling(config) }
 
     func setPitch(semitones: Float) {
         // Re-engaging: drop what the unit held when it was last in use, or that

@@ -19,6 +19,7 @@ struct AudioInfoStrip: View {
 
     @EnvironmentObject private var eqController: EQController
     @EnvironmentObject private var playerManager: PlayerManager
+    @EnvironmentObject private var leveling: VolumeLevelingManager
 
     @State private var source: AudioSourceInfo?
     @State private var route = OutputRouteInfo.current()
@@ -72,6 +73,9 @@ struct AudioInfoStrip: View {
         if playerManager.playbackRate != PlaybackTuning.defaultSpeed
             || playerManager.playbackPitch != PlaybackTuning.defaultPitch {
             parts.append("Tuned")
+        }
+        if let d = leveling.currentDecision, d.reading != nil, playerManager.currentTrack?.id == track.id {
+            parts.append("Level \(VolumeLevelingView.formatGain(d.gainDB))")
         }
         if let name = route.label { parts.append(name) }
         if let rate = route.sampleRate, let text = AudioSourceInfo.formatSampleRate(rate) {

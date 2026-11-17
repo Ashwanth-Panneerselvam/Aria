@@ -61,6 +61,29 @@ final class AudioTagsTests: XCTestCase {
 
     // MARK: - Parser
 
+    func test_readsReplayGainTags() throws {
+        let url = writeFLAC([
+            "TITLE=Loud Song", "REPLAYGAIN_TRACK_GAIN=-7.85 dB", "REPLAYGAIN_TRACK_PEAK=0.999969",
+            "replaygain_album_gain=+1.20 dB", "REPLAYGAIN_ALBUM_PEAK=1.000000",
+        ])
+        let rg = try XCTUnwrap(AudioTags.readReplayGain(fileURL: url))
+        XCTAssertEqual(rg.trackGainDB ?? 0, -7.85, accuracy: 1e-9)
+        XCTAssertEqual(rg.trackPeak ?? 0, 0.999969, accuracy: 1e-9)
+        XCTAssertEqual(rg.albumGainDB ?? 0, 1.2, accuracy: 1e-9)
+        XCTAssertEqual(rg.albumPeak ?? 0, 1, accuracy: 1e-9)
+    }
+
+    func test_replayGainOnlyFile_stillReadsGain_butHasNoNamingTags() {
+        let url = writeFLAC(["REPLAYGAIN_TRACK_GAIN=-3.00 dB"])
+        XCTAssertNil(AudioTags.read(fileURL: url), "no naming metadata")
+        XCTAssertEqual(AudioTags.readReplayGain(fileURL: url)?.trackGainDB, -3)
+    }
+
+    func test_noReplayGain_isNil() {
+        let url = writeFLAC(["TITLE=Plain"])
+        XCTAssertNil(AudioTags.readReplayGain(fileURL: url))
+    }
+
     func test_readsVorbisCommentsAfterLargePicture() throws {
         let url = writeFLAC([
             "TITLE=10 Minutes", "ARTIST=Lee Hyori", "ALBUM=Stylish", "ALBUMARTIST=Lee Hyori",

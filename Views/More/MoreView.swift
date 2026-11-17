@@ -8,6 +8,7 @@ struct MoreView: View {
     @EnvironmentObject private var recentlyPlayedManager: RecentlyPlayedManager
     @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
+    @EnvironmentObject private var volumeLevelingManager: VolumeLevelingManager
     @EnvironmentObject private var petStore: PetStore
 
     @State private var showClearFavoritesAlert = false
@@ -636,6 +637,20 @@ struct MoreView: View {
                 Divider().background(tokens.hairline).padding(.leading, 56)
 
                 NavigationLink {
+                    VolumeLevelingView()
+                } label: {
+                    row(icon: "speaker.wave.2", iconColor: tokens.accent, title: "Volume Leveling",
+                        isButton: true) {
+                        Text(levelingSummary)
+                            .font(DS.Typography.caption)
+                            .foregroundColor(tokens.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().background(tokens.hairline).padding(.leading, 56)
+
+                NavigationLink {
                     LibraryAuditView()
                 } label: {
                     row(icon: "waveform.badge.magnifyingglass", iconColor: tokens.accent,
@@ -732,6 +747,12 @@ struct MoreView: View {
     }
 
     /// "Crossfeed Natural · Tuned", "Off", …
+    private var levelingSummary: String {
+        let s = volumeLevelingManager.settings
+        guard s.enabled else { return "Off" }
+        return "\(s.mode.displayName) · \(s.level.displayName)"
+    }
+
     private var soundSummary: String {
         let s = soundProcessingManager.settings
         var parts: [String] = []

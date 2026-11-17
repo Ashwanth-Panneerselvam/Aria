@@ -17,6 +17,9 @@ nonisolated struct AudioTags: Equatable {
     var trackNumber: Int?
     var discNumber: Int?
     var year: Int?
+    /// ReplayGain tags, when the file has them. Not counted by `isEmpty`
+    /// (that's about naming metadata).
+    var replayGain: ReplayGainInfo?
 
     var isEmpty: Bool {
         title == nil && artist == nil && albumArtist == nil && album == nil
@@ -31,6 +34,12 @@ nonisolated struct AudioTags: Equatable {
     static func read(fileURL url: URL) -> AudioTags? {
         if let flac = readFLAC(url), !flac.isEmpty { return flac }
         return nil
+    }
+
+    /// ReplayGain values from a FLAC file's Vorbis comments, or nil.
+    static func readReplayGain(fileURL url: URL) -> ReplayGainInfo? {
+        guard let rg = readFLAC(url)?.replayGain, !rg.isEmpty else { return nil }
+        return rg
     }
 
     /// FLAC first, then AVFoundation's per-format metadata (ID3, iTunes).
@@ -120,6 +129,11 @@ nonisolated struct AudioTags: Equatable {
         let artists = (fields["ARTIST"] ?? []).reduce(into: [String]()) { acc, a in
             if !acc.contains(a) { acc.append(a) }
         }
+        let rg = ReplayGainInfo(
+            trackGainDB: VolumeLeveling.parseGain(first("REPLAYGAIN_TRACK_GAIN")),
+            trackPeak: VolumeLeveling.parsePeak(first("REPLAYGAIN_TRACK_PEAK")),
+            albumGainDB: VolumeLeveling.parseGain(first("REPLAYGAIN_ALBUM_GAIN")),
+            albumPeak: VolumeLeveling.parsePeak(first("REPLAYGAIN_ALBUM_PEAK")))
         return AudioTags(
             title: first("TITLE"),
             artist: artists.isEmpty ? nil : artists.joined(separator: ", "),
@@ -127,7 +141,8 @@ nonisolated struct AudioTags: Equatable {
             album: first("ALBUM"),
             trackNumber: leadingInt(first("TRACKNUMBER", "TRACK")),
             discNumber: leadingInt(first("DISCNUMBER", "DISC")),
-            year: leadingInt(first("DATE", "YEAR", "ORIGINALDATE")).flatMap { $0 > 999 ? $0 : nil }
+            year: leadingInt(first("DATE", "YEAR", "ORIGINALDATE")).flatMap { $0 > 999 ? $0 : nil },
+            replayGain: rg.isEmpty ? nil : rg
         )
     }
 

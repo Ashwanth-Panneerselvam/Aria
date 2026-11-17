@@ -46,6 +46,14 @@ final class AVPlayerPath {
     /// Post-EQ processing (crossfeed / personal tuning) for every item.
     private(set) var dapConfig: DAPConfig = .off
 
+    /// Volume-leveling gain for the current item. Set by `PlayerManager`
+    /// before each `play(url:)` so a new item starts at its own gain.
+    private(set) var levelingConfig: LevelingConfig = .off
+
+    /// Whether the current item still has to be started once its tap is in
+    /// place (local files with processing — see `play(url:)`).
+    private var startPending = false
+
     init(player: PlayerManager) {
         self.player = player
     }
@@ -199,17 +207,43 @@ final class AVPlayerPath {
 
         addEndObserver(for: playerItem)
 
-        // Fresh item → fresh tap. Attach now if anything needs it, otherwise
-        // this item plays with no tap in its path at all.
-        eqTap = nil
-        if player.eq.isEnabled || playbackPitch != 0 || dapConfig.isActive {
-            attachTap(eqBypassed: !player.eq.isEnabled)
-        }
-
         if let seek = pendingSeek {
             avPlayer?.seek(to: CMTime(seconds: seek, preferredTimescale: 600))
             pendingSeek = nil
         }
+
+        // Fresh item → fresh tap. Attach now if anything needs it, otherwise
+        // this item plays with no tap in its path at all.
+        eqTap = nil
+        startPending = false
+        if player.eq.isEnabled || playbackPitch != 0 || dapConfig.isActive || levelingConfig.isActive {
+            // A local file's track loads in milliseconds, so wait for the
+            // tap before starting: otherwise the first moments play
+            // unprocessed — e.g. a loud track at full volume before its
+            // leveling cut lands. Streams start at once, as before.
+            if url.isFileURL, let item = playerItem {
+                startPending = true
+                attachTap(eqBypassed: !player.eq.isEnabled) { [weak self] in
+                    self?.startIfPending(item)
+                }
+                // Safety net: never hold a local track back for long.
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    self?.startIfPending(item)
+                }
+                return
+            }
+            attachTap(eqBypassed: !player.eq.isEnabled)
+        }
+        avPlayer?.play()
+    }
+
+    /// Starts `item` if it's still current and still waiting to start.
+    private func startIfPending(_ item: AVPlayerItem) {
+        guard startPending, playerItem === item else { return }
+        startPending = false
+        // The user may have paused while the tap was being attached.
+        guard player?.isPlaying ?? true else { return }
         avPlayer?.play()
     }
 
@@ -241,6 +275,24 @@ final class AVPlayerPath {
         }
     }
 
+    /// Stores the gain the next `play(url:)` item starts with, without
+    /// touching the item that's playing now.
+    func prepareLeveling(_ config: LevelingConfig) {
+        levelingConfig = config
+    }
+
+    /// Changes the current item's leveling gain live (it glides there).
+    /// Attaches the tap if nothing else had needed it.
+    func updateLeveling(_ config: LevelingConfig) {
+        guard config != levelingConfig || eqTap == nil else { return }
+        levelingConfig = config
+        if let tap = eqTap {
+            tap.setLeveling(config)
+        } else if config.isActive, playerItem != nil, let eq = player?.eq {
+            attachTap(eqBypassed: !eq.isEnabled)
+        }
+    }
+
     func updateEQBands(_ bands: [Float]) {
         eqTap?.setBands(bands)
     }
@@ -259,14 +311,20 @@ final class AVPlayerPath {
     /// resulting `audioMix` — processing the live stream with no download.
     /// Reads the full EQ state (graphic bands + optional parametric curve) from
     /// the player's `EQController` so a fresh item starts with the right mode.
-    private func attachTap(eqBypassed: Bool) {
-        guard let item = playerItem, let eq = player?.eq else { return }
+    private func attachTap(eqBypassed: Bool, whenAttached: (() -> Void)? = nil) {
+        guard let item = playerItem, let eq = player?.eq else {
+            whenAttached?()
+            return
+        }
         let tap = AudioEQTap(frequencies: PlayerManager.eqFrequencies, bands: eq.bands,
                              bypassed: eqBypassed, parametric: eq.parametric,
-                             pitchSemitones: playbackPitch, dapConfig: dapConfig)
+                             pitchSemitones: playbackPitch, dapConfig: dapConfig,
+                             leveling: levelingConfig)
         eqTap = tap
         let asset = item.asset
         Task { @MainActor [weak self] in
+            // Whatever happens, let a waiting item start.
+            defer { whenAttached?() }
             guard let self,
                   let track = try? await asset.loadTracks(withMediaType: .audio).first,
                   self.eqTap === tap, self.playerItem === item,
@@ -363,6 +421,7 @@ final class AVPlayerPath {
         timeControlObserver = nil
         lastNowPlayingSecond = -1
         eqTap = nil
+        startPending = false
         player?.isRebuffering = false
     }
 

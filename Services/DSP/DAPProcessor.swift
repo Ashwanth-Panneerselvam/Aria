@@ -32,7 +32,7 @@ struct DAPConfig: Equatable {
 
 /// Real-time stage that runs inside `AudioEQTap` after the 10-band EQ:
 /// headroom gain → up to 12 biquads (personal tuning / hearing profile) →
-/// crossfeed. Works in place on the tap's Float32 non-interleaved buffers.
+/// crossfeed → volume-leveling gain → safety limiter. Works in place on the tap's Float32 non-interleaved buffers.
 ///
 /// Threading: `update` is called from the UI thread and only writes a
 /// pending config under a lock. The render thread picks it up with a
@@ -44,6 +44,7 @@ final class DAPProcessor {
 
     private struct Pending {
         var config = DAPConfig.off
+        var leveling = LevelingConfig.off
         var dirty = true
     }
 
@@ -62,6 +63,19 @@ final class DAPProcessor {
     private var crossfeedOn = false
     private var cf = CrossfeedCoefficients()
     private var cfState = CrossfeedState()
+
+    // Volume leveling (render thread). `levelCurrent` glides to
+    // `levelTarget` so a gain that changes mid-track (the track finished
+    // being measured) fades rather than jumps. The first config is applied
+    // before any audio, so a track starts at its gain with no glide.
+    private var levelTarget: Float = 1
+    private var levelCurrent: Float = 1
+    private var levelPrimed = false
+    private var limiterOn = false
+    private var limiterGain: Float = 1
+    private var glideCoeff: Float = 0
+    private var releaseCoeff: Float = 0
+    private var levelingRuns: Bool { limiterOn || levelTarget != 1 || levelCurrent != levelTarget }
 
     init() {
         coefficients = .allocate(capacity: Self.maxFilters)
@@ -87,6 +101,14 @@ final class DAPProcessor {
         }
     }
 
+    /// Volume-leveling gain for the current item (UI thread).
+    func updateLeveling(_ config: LevelingConfig) {
+        pending.withLockUnchecked { (state: inout Pending) in
+            state.leveling = config
+            state.dirty = true
+        }
+    }
+
     // MARK: - Lifecycle (tap prepare)
 
     func prepare(format: AudioStreamBasicDescription) {
@@ -108,7 +130,7 @@ final class DAPProcessor {
     func process(_ bufferList: UnsafeMutablePointer<AudioBufferList>, frames: Int) {
         guard formatUsable, frames > 0 else { return }
         applyPendingIfAvailable()
-        guard active else { return }
+        guard active || levelingRuns else { return }
 
         let list = UnsafeMutableAudioBufferListPointer(bufferList)
         guard list.count >= 1,
@@ -120,6 +142,12 @@ final class DAPProcessor {
             right = rRaw.assumingMemoryBound(to: Float.self)
         }
 
+        if active { processFilters(left: left, right: right, frames: n) }
+        if levelingRuns { processLeveling(left: left, right: right, frames: n) }
+    }
+
+    @inline(__always)
+    private func processFilters(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?, frames n: Int) {
         let g = Double(preGain)
         let count = filterCount
         let c = coefficients
@@ -140,19 +168,55 @@ final class DAPProcessor {
         }
     }
 
+    /// Gain (with glide) then a peak limiter at full scale: instant attack,
+    /// short release, stereo-linked. The limiter only reduces gain on
+    /// samples that would otherwise exceed ±1.0 — anything below full scale
+    /// passes untouched.
+    @inline(__always)
+    private func processLeveling(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?, frames n: Int) {
+        var g = levelCurrent
+        let target = levelTarget
+        let glide = glideCoeff
+        let release = releaseCoeff
+        var lim = limiterGain
+        let limit = limiterOn
+        for i in 0..<n {
+            g += (target - g) * glide
+            var l = left[i] * g
+            var r: Float = 0
+            if let right { r = right[i] * g }
+            if limit {
+                let peak = max(abs(l), abs(r))
+                let needed: Float = peak > 1 ? 1 / peak : 1
+                if needed < lim {
+                    lim = needed
+                } else {
+                    lim += (needed - lim) * release
+                }
+                l *= lim
+                r *= lim
+            }
+            left[i] = l
+            if let right { right[i] = r }
+        }
+        if abs(g - target) < 1e-5 { g = target }
+        levelCurrent = g
+        limiterGain = lim
+    }
+
     // MARK: - Internals
 
     private func applyPendingIfAvailable() {
         _ = pending.withLockIfAvailableUnchecked { (state: inout Pending) -> Bool in
             guard state.dirty else { return false }
             state.dirty = false
-            load(state.config)
+            load(state.config, leveling: state.leveling)
             return true
         }
     }
 
     /// Render thread, under the lock. Math only — no allocation.
-    private func load(_ config: DAPConfig) {
+    private func load(_ config: DAPConfig, leveling: LevelingConfig) {
         let wasActive = active
         let fs = sampleRate > 0 ? sampleRate : 48_000
         var count = 0
@@ -179,6 +243,21 @@ final class DAPProcessor {
         }
         active = config.isActive
         if active && !wasActive { resetFilterState() }
+        loadLeveling(leveling, sampleRate: fs)
+    }
+
+    private func loadLeveling(_ config: LevelingConfig, sampleRate fs: Double) {
+        let gainDB = min(VolumeLeveling.maxBoostDB, max(VolumeLeveling.maxCutDB, config.gainDB))
+        levelTarget = Float(pow(10, gainDB / 20))
+        if !levelPrimed {
+            levelCurrent = levelTarget
+            levelPrimed = true
+        }
+        // ~0.4 s glide; ~60 ms limiter release.
+        glideCoeff = Float(1 - exp(-1 / (0.4 * fs)))
+        releaseCoeff = Float(1 - exp(-1 / (0.06 * fs)))
+        limiterOn = config.limiter
+        if !limiterOn { limiterGain = 1 }
     }
 
     private func resetFilterState() {

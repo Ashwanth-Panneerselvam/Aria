@@ -194,3 +194,57 @@ Edits Aria's library list only — never the audio files.
   per-item ticks, Undo card, "still missing" counts with Re-read tags and
   Split from titles. Entry: More → DAP, and Library Audit → Tags.
 - Tests: `MetadataDoctorTests`.
+
+## Volume Leveling (2026-11-17)
+
+Every library track plays at the same perceived loudness. More → DAP →
+Volume Leveling. On by default; one toggle turns it off and playback is
+then exactly as before (no tap is attached for leveling).
+
+**What it does.** One fixed gain per track, `target − loudness`, applied in
+the existing post-EQ stage (`DAPProcessor`, after EQ, tuning and
+crossfeed). It's a volume change, not compression — dynamics within the
+track are untouched. Boosts are capped at +12 dB, cuts at −24 dB.
+
+**Where loudness comes from** (`VolumeLevelingManager.reading`):
+- Track mode: Aria's BS.1770 measurement (`TrackAnalysis.integratedLUFS`,
+  the same cached analysis behind the waveform and Library Audit) →
+  FLAC `REPLAYGAIN_TRACK_GAIN` → `REPLAYGAIN_ALBUM_GAIN`.
+- Album mode: Aria's album loudness (duration-weighted energy mean of the
+  measured tracks, only when every present track of the album is measured;
+  albums grouped with `MetadataDoctor.key`) → ReplayGain album tag → track
+  sources.
+- ReplayGain gains are converted with the RG 2.0 reference, −18 LUFS.
+
+**Unmeasured tracks.** Start at 0 dB with the limiter armed, so the tap is
+in place from the first sample; the track is measured in the background and
+the gain glides in (~0.4 s time constant) when the result lands. The next
+two queued tracks are measured 10 s after a track starts. "Measure the
+whole library now" runs the existing library analysis.
+
+**Targets.** Loud −14, Normal −16 (default), Quiet −18 LUFS.
+
+**Peaks.** Default: full boost, and a stereo-linked peak limiter at full
+scale (instant attack, ~60 ms release, no lookahead) catches only samples
+that would exceed ±1.0 — audio below full scale passes bit-for-bit through
+that stage. "Never limit peaks" instead caps a boost so the measured peak
+stays at or under −1 dBFS; such tracks may end up slightly quieter.
+
+**Start without a blip.** With any processing active, a local file now
+waits for its tap (track load is milliseconds; 400 ms safety timeout)
+before `AVPlayer.play()`, so a loud track no longer plays its first moments
+unprocessed. Streams start immediately, as before. Streams are not leveled.
+
+**Visibility.** The player's info strip shows `Level −6.2 dB` once the
+track's loudness is known; the settings screen shows the playing track's
+gain, its loudness and source, and library coverage.
+
+Settings: `volume_leveling_v1` (UserDefaults). No library data is
+modified; ReplayGain tags are only read.
+
+Files: `Models/VolumeLeveling.swift`, `Managers/VolumeLevelingManager.swift`,
+`Views/More/VolumeLevelingView.swift`; changes in `DAPProcessor`,
+`AudioEQTap`, `AVPlayerPath`, `PlayerManager`, `AudioTags`,
+`AudioInfoStrip`, `MoreView`, `ContentView`, `AriaApp`. Tests:
+`VolumeLevelingTests`, `AudioTagsTests` (ReplayGain parsing) — not yet
+executed (CI tests only run on PRs to main).

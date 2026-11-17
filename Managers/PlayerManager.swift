@@ -404,6 +404,7 @@ final class PlayerManager: NSObject, ObservableObject {
         currentTime = 0
         duration = 0
         stopAllPlayback()
+        prepareLeveling(for: track)
         applyPendingResume()
         nowPlaying.updateNowPlaying()
         nowPlaying.loadArtwork(for: track)
@@ -437,6 +438,7 @@ final class PlayerManager: NSObject, ObservableObject {
         currentTime = 0
         duration = 0
         stopAllPlayback()
+        prepareLeveling(for: track)
         applyPendingResume()
         nowPlaying.updateNowPlaying()
         if let artworkURL = track.thumbnailURL {
@@ -514,6 +516,23 @@ final class PlayerManager: NSObject, ObservableObject {
     /// Crossfeed / personal tuning / hearing profile, applied after the EQ.
     func applySoundProcessing(_ config: DAPConfig) {
         avPlayerPath.updateDAP(config)
+    }
+
+    // MARK: - Volume leveling
+
+    /// Returns the leveling gain for a track. Set by `VolumeLevelingManager`;
+    /// nil (or `.off`) leaves playback exactly as it was.
+    var levelingResolver: ((Track) -> LevelingConfig)?
+
+    /// Re-resolves the current track's gain and applies it live — after a
+    /// settings change or when the track has just been measured.
+    func refreshLeveling() {
+        guard let track = currentTrack else { return }
+        avPlayerPath.updateLeveling(levelingResolver?(track) ?? .off)
+    }
+
+    private func prepareLeveling(for track: Track) {
+        avPlayerPath.prepareLeveling(levelingResolver?(track) ?? .off)
     }
 
     func resetEQ() {

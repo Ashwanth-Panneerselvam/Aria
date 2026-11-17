@@ -17,6 +17,7 @@ struct ContentView: View {
     @EnvironmentObject private var analysisManager: LibraryAnalysisManager
     @EnvironmentObject private var soundProcessingManager: SoundProcessingManager
     @EnvironmentObject private var petStore: PetStore
+    @EnvironmentObject private var volumeLevelingManager: VolumeLevelingManager
 
     @State private var selectedTab: AppTab
     @State private var showFullPlayer = false
@@ -134,6 +135,8 @@ struct ContentView: View {
             playerManager.configureFavorites(favoritesManager)
             analysisManager.configure(library: localLibraryManager)
             playerManager.applySoundProcessing(soundProcessingManager.config)
+            volumeLevelingManager.configure(library: localLibraryManager, analysis: analysisManager,
+                                            player: playerManager)
             playerManager.configureDownloads(downloadManager)
             librarySearchManager.configure(
                 favorites: favoritesManager,
