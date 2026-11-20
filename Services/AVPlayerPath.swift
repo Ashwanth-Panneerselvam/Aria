@@ -118,10 +118,14 @@ final class AVPlayerPath {
         // across tracks without touching every play() call site.
         avPlayer?.defaultRate = playbackRate
 
-        timeControlObserver = avPlayer?.observe(\.timeControlStatus, options: [.new]) { [weak self] avPlayer, _ in
-            let status = avPlayer.timeControlStatus
+        timeControlObserver = avPlayer?.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
+            let status = observed.timeControlStatus
             DispatchQueue.main.async {
                 guard let self, let player = self.player else { return }
+                // Ignore a late callback from the previous track's player: when
+                // a track ends, its "paused" can arrive after the next track
+                // has been set up and would mark that one as paused.
+                guard self.avPlayer === observed else { return }
                 switch status {
                 case .playing:
                     player.isPlaying = true
@@ -239,11 +243,12 @@ final class AVPlayerPath {
     }
 
     /// Starts `item` if it's still current and still waiting to start.
+    /// A pause while waiting clears `startPending` (see `pause()`), so this
+    /// doesn't consult `isPlaying` — that flag can be briefly stale around a
+    /// track change.
     private func startIfPending(_ item: AVPlayerItem) {
         guard startPending, playerItem === item else { return }
         startPending = false
-        // The user may have paused while the tap was being attached.
-        guard player?.isPlaying ?? true else { return }
         avPlayer?.play()
     }
 
@@ -335,6 +340,7 @@ final class AVPlayerPath {
 
     /// Plays the current item from the beginning (used by `repeatMode == .one`).
     func replayCurrent() {
+        startPending = false
         avPlayer?.seek(to: .zero)
         avPlayer?.play()
     }
@@ -345,10 +351,13 @@ final class AVPlayerPath {
     }
 
     func play() {
+        startPending = false
         avPlayer?.play()
     }
 
     func pause() {
+        // A pause while the item waits for its tap: don't start it afterwards.
+        startPending = false
         avPlayer?.pause()
     }
 
@@ -409,11 +418,13 @@ final class AVPlayerPath {
 
     func stop() {
         log.notice("stopAVPlayer player=\(self.avPlayer != nil, privacy: .public) item=\(self.playerItem != nil, privacy: .public) timeObserver=\(self.timeObserver != nil, privacy: .public)")
-        avPlayer?.pause()
-        removeEndObserver()
-        if let obs = timeObserver { avPlayer?.removeTimeObserver(obs) }
+        // Stop observing first, so this pause can't echo back as a state
+        // change after the next track has started.
         statusObserver?.invalidate()
         timeControlObserver?.invalidate()
+        removeEndObserver()
+        if let obs = timeObserver { avPlayer?.removeTimeObserver(obs) }
+        avPlayer?.pause()
         cancelStallWatchdog()
         avPlayer = nil
         playerItem = nil

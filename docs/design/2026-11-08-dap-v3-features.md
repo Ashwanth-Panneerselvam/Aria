@@ -253,3 +253,14 @@ Files: `Models/VolumeLeveling.swift`, `Managers/VolumeLevelingManager.swift`,
 `AudioInfoStrip`, `MoreView`, `ContentView`, `AriaApp`. Tests:
 `VolumeLevelingTests`, `AudioTagsTests` (ReplayGain parsing) — not yet
 executed (CI tests only run on PRs to main).
+
+### Fix: next track not starting (2026-11-20)
+
+Introduced by "start without a blip" above. When a track ended (or was
+skipped), the old `AVPlayer`'s late "paused" callback could arrive after
+the next track was set up and set `isPlaying = false`; the waiting item
+then checked `isPlaying` and never started, so playback stopped after
+every song. Fixes: the timeControlStatus handler ignores callbacks from a
+player that is no longer current; `stop()` stops observing before it
+pauses; and the waiting item starts unless `pause()` was called while it
+waited (tracked by `startPending`, not by `isPlaying`).
