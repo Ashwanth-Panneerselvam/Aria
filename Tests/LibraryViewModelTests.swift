@@ -50,6 +50,38 @@ final class LibraryViewModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Play order follows the screen
+
+    func test_playOrder_followsSortNotImportOrder() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        // Stored newest-first (import order), titles deliberately reversed.
+        let library = makeLibrary(tracks: [
+            makeTrack(title: "C", importedAt: old.addingTimeInterval(30)),
+            makeTrack(title: "B", importedAt: old.addingTimeInterval(20)),
+            makeTrack(title: "A", importedAt: old.addingTimeInterval(10)),
+        ])
+        let vm = LibraryViewModel(library: library, initialSortOrder: .title)
+        XCTAssertEqual(vm.playOrder.map(\.title), ["A", "B", "C"])
+        XCTAssertEqual(vm.playOrder.map(\.title), vm.sections.flatMap(\.tracks).map(\.title))
+    }
+
+    func test_playOrder_followsGrouping() {
+        let library = makeLibrary(tracks: [
+            makeTrack(title: "Z1", album: "Zeta"),
+            makeTrack(title: "A1", album: "Alpha"),
+            makeTrack(title: "Z2", album: "Zeta"),
+        ])
+        let vm = LibraryViewModel(library: library, initialSortOrder: .title, initialGroupBy: .album)
+        XCTAssertEqual(vm.playOrder.map(\.title), ["A1", "Z1", "Z2"])
+    }
+
+    func test_playOrder_respectsSearch() {
+        let library = makeLibrary(tracks: [makeTrack(title: "Blue"), makeTrack(title: "Red")])
+        let vm = LibraryViewModel(library: library, initialSortOrder: .title)
+        vm.searchText = "red"
+        XCTAssertEqual(vm.playOrder.map(\.title), ["Red"])
+    }
+
     // MARK: - Skeleton: Combine subscription
 
     func test_init_subscribesToLibraryTracks() {

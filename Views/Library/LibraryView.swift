@@ -617,15 +617,16 @@ struct LibraryView: View {
     }
 
     private func playTrack(_ track: LocalTrack) {
-        // Build the full library as Track objects, then start playback
-        // at the tapped track. Subsequent Next/Previous cycles through
-        // the library in the same order the user sees in the list.
+        // Queue the list as shown (search, sort and grouping applied), then
+        // start at the tapped track, so Next/Previous follow the rows on
+        // screen. This used the raw import order before, which only matched
+        // the screen on the default Recently Added sort with no grouping.
         // Pre-filter missing tracks and re-locate the tapped track's
         // index in the filtered list — `playSlice` clamps its
         // `startIndex` to the playable array's bounds, so passing the
         // unfiltered index would silently skip to the wrong track when
         // missing entries precede the tapped one.
-        let library = vm.tracks
+        let library = vm.playOrder
         guard let result = Self.playableStartIndex(
             in: library,
             tappedTrack: track,
@@ -664,8 +665,9 @@ struct LibraryView: View {
     }
 
     private func playAll() {
-        guard !vm.tracks.isEmpty else { return }
-        let asTracks = vm.tracks.map {
+        let visible = vm.playOrder
+        guard !visible.isEmpty else { return }
+        let asTracks = visible.map {
             $0.asPlayerTrack(fileURL: libraryManager.fileURL(for: $0))
         }
         playerManager.playSlice(asTracks, startIndex: 0)

@@ -58,6 +58,11 @@ final class LibraryViewModel: ObservableObject {
     @Published private(set) var filteredAndSortedTracks: [LocalTrack] = []
     @Published private(set) var sections: [LibrarySection] = []
 
+    /// Every visible track, top to bottom, exactly as the list shows it —
+    /// current search, sort and grouping applied. This is the play order:
+    /// Next goes to the row below, Previous to the row above.
+    var playOrder: [LocalTrack] { sections.flatMap(\.tracks) }
+
     private let library: LocalLibraryManager
     private var cancellables = Set<AnyCancellable>()
 

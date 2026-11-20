@@ -264,3 +264,14 @@ every song. Fixes: the timeControlStatus handler ignores callbacks from a
 player that is no longer current; `stop()` stops observing before it
 pauses; and the waiting item starts unless `pause()` was called while it
 waited (tracked by `startPending`, not by `isPlaying`).
+
+### Fix: Library Next/Previous in the wrong order (2026-11-20)
+
+Pre-existing (upstream) bug: tapping a song in Library queued the library
+in stored import order (newest first), not the order on screen. With any
+sort other than Recently Added, or any grouping, Next went to an unrelated
+row — often the one above. Now `LibraryViewModel.playOrder` (the visible
+sections, top to bottom, search applied) is the queue for both tapping a
+row and Play All. Also makes the AirPods double-press (next) work whenever
+there's a row below: next was being reported as unavailable when the
+tapped song happened to be last in import order.
